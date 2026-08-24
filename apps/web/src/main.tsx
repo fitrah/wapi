@@ -52,6 +52,11 @@ const apiBase = import.meta.env.VITE_API_BASE ?? "";
 type View = "overview" | "numbers" | "messages" | "packages" | "api";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const json = await apiRaw<{ data?: T } & T>(path, init);
+  return json.data ?? json;
+}
+
+async function apiRaw<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("wapi_session");
   const res = await fetch(`${apiBase}${path}`, {
     ...init,
@@ -63,7 +68,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.error ?? "Request failed");
-  return json.data ?? json;
+  return json;
 }
 
 function App() {
@@ -121,7 +126,7 @@ function App() {
   }
 
   async function connect(numberId: string) {
-    const result = await api<{ data: WaNumber; qrDataUrl?: string }>(`/api/numbers/${numberId}/connect`, { method: "POST" });
+    const result = await apiRaw<{ data: WaNumber; qrDataUrl?: string }>(`/api/numbers/${numberId}/connect`, { method: "POST" });
     setQrDataUrl(result.qrDataUrl ?? "");
     setNotice(result.qrDataUrl ? "QR siap discan." : "Session sedang connecting.");
     await refresh();
