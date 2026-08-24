@@ -49,6 +49,7 @@ type MessageLog = {
 };
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
+type View = "overview" | "numbers" | "messages" | "packages" | "api";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("wapi_session");
@@ -72,6 +73,7 @@ function App() {
   const [numbers, setNumbers] = useState<WaNumber[]>([]);
   const [messages, setMessages] = useState<MessageLog[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [activeView, setActiveView] = useState<View>("overview");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [label, setLabel] = useState("");
   const [recipient, setRecipient] = useState("6281234567890");
@@ -156,10 +158,11 @@ function App() {
           </div>
         </div>
         <nav>
-          <button className="active"><Activity size={17} /> Overview</button>
-          <button><Smartphone size={17} /> Numbers</button>
-          <button><Send size={17} /> Messages</button>
-          <button><KeyRound size={17} /> Packages</button>
+          <button className={activeView === "overview" ? "active" : ""} onClick={() => setActiveView("overview")}><Activity size={17} /> Overview</button>
+          <button className={activeView === "numbers" ? "active" : ""} onClick={() => setActiveView("numbers")}><Smartphone size={17} /> Numbers</button>
+          <button className={activeView === "messages" ? "active" : ""} onClick={() => setActiveView("messages")}><Send size={17} /> Messages</button>
+          <button className={activeView === "packages" ? "active" : ""} onClick={() => setActiveView("packages")}><KeyRound size={17} /> Packages</button>
+          <button className={activeView === "api" ? "active" : ""} onClick={() => setActiveView("api")}><KeyRound size={17} /> API Keys</button>
         </nav>
       </aside>
 
@@ -196,8 +199,9 @@ function App() {
 
         {notice && <div className="notice">{notice}</div>}
 
-        <section className="grid">
-          <div className="panel">
+        {(activeView === "overview" || activeView === "numbers" || activeView === "messages") && (
+        <section className={activeView === "overview" ? "grid" : "singleGrid"}>
+          {(activeView === "overview" || activeView === "numbers") && <div className="panel">
             <div className="panelHeader">
               <h2>Numbers</h2>
               <QrCode size={18} />
@@ -227,9 +231,9 @@ function App() {
               </button>
             )}
             {qrDataUrl && <img className="qr" src={qrDataUrl} alt="WhatsApp QR" />}
-          </div>
+          </div>}
 
-          <div className="panel">
+          {(activeView === "overview" || activeView === "messages") && <div className="panel">
             <div className="panelHeader">
               <h2>Send Test</h2>
               <Send size={18} />
@@ -249,10 +253,11 @@ function App() {
               <textarea value={body} onChange={(e) => setBody(e.target.value)} />
             </label>
             <button className="wide primary" onClick={sendMessage}><Send size={16} /> Send Message</button>
-          </div>
+          </div>}
         </section>
+        )}
 
-        <section className="panel tablePanel">
+        {(activeView === "overview" || activeView === "packages") && <section className="panel tablePanel">
           <div className="panelHeader">
             <h2>Packages</h2>
             <KeyRound size={18} />
@@ -267,9 +272,30 @@ function App() {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
 
-        <section className="panel tablePanel">
+        {activeView === "api" && <section className="panel tablePanel">
+          <div className="panelHeader">
+            <h2>API Keys</h2>
+            <KeyRound size={18} />
+          </div>
+          <div className="apiGuide">
+            <div>
+              <strong>Dashboard session</strong>
+              <p>Dashboard menggunakan session token dari login/register, jadi browser tidak lagi menyimpan demo API key.</p>
+            </div>
+            <div>
+              <strong>Integration header</strong>
+              <p>Integrasi server tetap memakai header <code>x-api-key</code>. Secret key hanya ditampilkan saat workspace/API key dibuat supaya tidak bocor di dashboard.</p>
+            </div>
+            <pre>{`curl -X POST https://wapi.proyek.org/api/messages/send-text \\
+  -H "x-api-key: wapi_xxx" \\
+  -H "content-type: application/json" \\
+  -d '{"numberId":"...","recipient":"62812...","body":"Halo"}'`}</pre>
+          </div>
+        </section>}
+
+        {(activeView === "overview" || activeView === "messages") && <section className="panel tablePanel">
           <div className="panelHeader">
             <h2>Message Log</h2>
             <MessageSquareText size={18} />
@@ -285,7 +311,7 @@ function App() {
             ))}
             {!messages.length && <div className="empty">Belum ada pesan.</div>}
           </div>
-        </section>
+        </section>}
       </section>
     </main>
   );

@@ -179,6 +179,12 @@ code {
   grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
 }
 
+.singleGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(280px, 720px);
+}
+
 .landingShell {
   display: grid;
   gap: 28px;
@@ -488,6 +494,29 @@ em[data-status="disconnected"] {
   margin: 0;
 }
 
+.apiGuide {
+  display: grid;
+  gap: 12px;
+}
+
+.apiGuide div,
+.apiGuide pre {
+  background: #fbfcfa;
+  border: 1px solid #e3e8e1;
+  border-radius: 8px;
+  margin: 0;
+  padding: 14px;
+}
+
+.apiGuide p {
+  color: #66756b;
+  margin: 6px 0 0;
+}
+
+.apiGuide pre {
+  overflow: auto;
+}
+
 .table {
   display: grid;
   gap: 8px;
@@ -542,7 +571,7 @@ em[data-status="disconnected"] {
   }
 
   nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   nav button {
@@ -552,6 +581,7 @@ em[data-status="disconnected"] {
   .topbar,
   .stats,
   .grid,
+  .singleGrid,
   .planGrid {
     grid-template-columns: 1fr;
   }
