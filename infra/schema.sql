@@ -1,9 +1,9 @@
 create table tenants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  plan text not null default 'starter',
+  plan text not null default 'free',
   max_numbers integer not null default 1,
-  daily_message_limit integer not null default 500,
+  daily_message_limit integer not null default 1000,
   notification_email text,
   api_key_hash text not null,
   created_at timestamptz not null default now()
@@ -46,3 +46,7 @@ create table webhooks (
 
 create index messages_tenant_created_idx on messages(tenant_id, created_at desc);
 create index whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);
+
+-- Reference packages are modeled in code so pricing can evolve without a migration.
+-- Initial package ladder follows Fonnte-style monthly quotas/features:
+-- Free, Lite, Regular, Super, Ultra.

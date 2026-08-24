@@ -9,6 +9,19 @@ export type Tenant = {
   createdAt: string;
 };
 
+export type Plan = {
+  slug: string;
+  name: string;
+  monthlyPriceIdr: number;
+  monthlyMessageLimit: number | null;
+  maxNumbers: number;
+  maxAgents: number;
+  attachmentEnabled: boolean;
+  autoreplySpreadsheetEnabled: boolean;
+  deviceNotificationEnabled: boolean;
+  features: string[];
+};
+
 export type WaNumber = {
   id: string;
   tenantId: string;
@@ -29,6 +42,7 @@ export type MessageLog = {
   sender?: string;
   body: string;
   status: "queued" | "sent" | "failed" | "received";
+  providerMessageId?: string;
   error?: string;
   createdAt: string;
   sentAt?: string;

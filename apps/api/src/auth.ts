@@ -10,9 +10,9 @@ declare global {
   }
 }
 
-export function requireTenant(req: Request, res: Response, next: NextFunction) {
+export async function requireTenant(req: Request, res: Response, next: NextFunction) {
   const header = req.header("x-api-key") ?? "";
-  const tenant = store.getTenantByApiKey(header);
+  const tenant = await store.getTenantByApiKey(header);
   if (!tenant) {
     res.status(401).json({ error: "Invalid API key" });
     return;

@@ -7,7 +7,7 @@ MVP SaaS WA API gateway for unofficial multi-tenant WhatsApp automation. Default
 - API: Node.js, Express, TypeScript
 - WhatsApp driver: Baileys adapter with mock fallback
 - Dashboard: React + Vite
-- Production backing services: PostgreSQL + Redis/BullMQ
+- Production backing services: PostgreSQL now, Redis/BullMQ next
 
 ## Run Local
 
@@ -32,6 +32,17 @@ npm run dev --workspace @wagw/api
 ```
 
 Real mode stores WhatsApp auth state under `.wa-sessions/`.
+
+## Persistence
+
+Set `DATABASE_URL` to enable PostgreSQL persistence for tenants, numbers, message logs, and API key lookup. Without it, the API falls back to the in-memory demo store.
+
+```bash
+DATABASE_URL=postgresql://wapi_app:password@127.0.0.1:5432/wapi
+SEED_DEMO_API_KEY=demo_key
+```
+
+Plans follow a Fonnte-style ladder: `free`, `lite`, `regular`, `super`, and `ultra`, with monthly message limits and feature flags.
 
 ## Email Alerts
 

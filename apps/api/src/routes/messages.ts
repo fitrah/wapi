@@ -13,8 +13,8 @@ const sendSchema = z.object({
 export const messagesRouter = Router();
 messagesRouter.use(requireTenant);
 
-messagesRouter.get("/", (req, res) => {
-  res.json({ data: store.listMessages(req.tenant!.id) });
+messagesRouter.get("/", async (req, res) => {
+  res.json({ data: await store.listMessages(req.tenant!.id) });
 });
 
 messagesRouter.post("/send-text", async (req, res) => {
@@ -24,13 +24,19 @@ messagesRouter.post("/send-text", async (req, res) => {
     return;
   }
 
-  const number = store.getNumber(req.tenant!.id, parsed.data.numberId);
+  const number = await store.getNumber(req.tenant!.id, parsed.data.numberId);
   if (!number) {
     res.status(404).json({ error: "Number not found" });
     return;
   }
 
-  const message = store.createMessage({
+  const sentThisMonth = await store.countOutboundMessagesThisMonth(req.tenant!.id);
+  if (req.tenant!.dailyMessageLimit > 0 && sentThisMonth >= req.tenant!.dailyMessageLimit) {
+    res.status(429).json({ error: "Monthly message limit reached for current plan" });
+    return;
+  }
+
+  const message = await store.createMessage({
     tenantId: req.tenant!.id,
     numberId: number.id,
     direction: "outbound",
@@ -41,7 +47,7 @@ messagesRouter.post("/send-text", async (req, res) => {
 
   try {
     const sent = await whatsAppDriver.sendText(number, parsed.data.recipient, parsed.data.body);
-    const updated = store.updateMessage(message.id, {
+    const updated = await store.updateMessage(message.id, {
       status: "sent",
       sentAt: new Date().toISOString(),
       error: undefined,
@@ -49,7 +55,7 @@ messagesRouter.post("/send-text", async (req, res) => {
     });
     res.status(202).json({ data: updated });
   } catch (error) {
-    const updated = store.updateMessage(message.id, {
+    const updated = await store.updateMessage(message.id, {
       status: "failed",
       error: error instanceof Error ? error.message : "Failed to send message"
     });
