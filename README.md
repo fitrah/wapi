@@ -21,6 +21,7 @@ Open:
 - Dashboard: `http://localhost:5173`
 - API health: `http://localhost:4100/health`
 
+Demo login: `demo@wapi.local` / `demo12345`
 Demo API key: `demo_key`
 
 ## Real WhatsApp Mode
@@ -43,6 +44,16 @@ SEED_DEMO_API_KEY=demo_key
 ```
 
 Plans follow a Fonnte-style ladder: `free`, `lite`, `regular`, `super`, and `ultra`, with monthly message limits and feature flags.
+
+## Tenant Auth
+
+The dashboard uses session auth:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+
+API integrations can still use `x-api-key`, while the dashboard sends `Authorization: Bearer <session_token>`.
 
 ## Email Alerts
 
