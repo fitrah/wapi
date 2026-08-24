@@ -21,65 +21,89 @@ export class BaileysDriver implements WhatsAppDriver {
       await rm(dir, { recursive: true, force: true });
     }
     await mkdir(dir, { recursive: true });
-    const { state, saveCreds } = await useMultiFileAuthState(dir);
-    const { version } = await fetchLatestBaileysVersion();
-    const socket = makeWASocket({
-      auth: state,
-      browser: Browsers.ubuntu("Chrome"),
-      markOnlineOnConnect: false,
-      printQRInTerminal: false,
-      syncFullHistory: false,
-      version,
-      logger: P({ level: process.env.WA_LOG_LEVEL ?? "warn" })
-    });
-    this.sockets.set(number.id, socket);
-    socket.ev.on("creds.update", saveCreds);
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         resolve({ number: { ...number, status: "connecting" } });
       }, 5000);
 
-      socket.ev.on("connection.update", async (update) => {
-        if (update.qr) {
-          clearTimeout(timeout);
-          const nextNumber = { ...number, status: "qr" as const, lastQr: update.qr };
-          await this.events.onNumberStatusChange?.(nextNumber, { reason: "qr-generated" });
-          resolve({
-            number: nextNumber,
-            qrDataUrl: await QRCode.toDataURL(update.qr)
-          });
-        }
-        if (update.connection === "open") {
-          clearTimeout(timeout);
-          const nextNumber = { ...number, status: "connected" as const, lastSeenAt: new Date().toISOString() };
-          await this.events.onNumberStatusChange?.(nextNumber, { reason: "connected" });
-          resolve({
-            number: nextNumber
-          });
-        }
-        if (update.connection === "close" && update.lastDisconnect?.error) {
-          const code = (update.lastDisconnect.error as { output?: { statusCode?: number } }).output?.statusCode;
-          const status: WaNumber["status"] = code === DisconnectReason.loggedOut ? "disconnected" : "error";
-          const reconnectRequired = code === DisconnectReason.loggedOut;
-          if (reconnectRequired) {
-            await rm(dir, { recursive: true, force: true });
+      const startSocket = async () => {
+        const { state, saveCreds } = await useMultiFileAuthState(dir);
+        const { version } = await fetchLatestBaileysVersion();
+        const socket = makeWASocket({
+          auth: state,
+          browser: Browsers.ubuntu("Chrome"),
+          markOnlineOnConnect: false,
+          printQRInTerminal: false,
+          syncFullHistory: false,
+          version,
+          logger: P({ level: process.env.WA_LOG_LEVEL ?? "warn" })
+        });
+        this.sockets.set(number.id, socket);
+        socket.ev.on("creds.update", saveCreds);
+
+        socket.ev.on("connection.update", async (update) => {
+          if (update.qr) {
+            clearTimeout(timeout);
+            const nextNumber = { ...number, status: "qr" as const, lastQr: update.qr };
+            await this.events.onNumberStatusChange?.(nextNumber, { reason: "qr-generated" });
+            resolve({
+              number: nextNumber,
+              qrDataUrl: await QRCode.toDataURL(update.qr)
+            });
           }
-          this.sockets.delete(number.id);
-          const nextNumber = { ...number, status, lastSeenAt: new Date().toISOString() };
-          clearTimeout(timeout);
-          console.warn("WhatsApp connection closed", {
-            numberId: number.id,
-            tenantId: number.tenantId,
-            code,
-            message: update.lastDisconnect.error.message
-          });
-          await this.events.onNumberStatusChange?.(nextNumber, {
-            reason: `connection-close:${code ?? "unknown"}`,
-            reconnectRequired
-          });
-          resolve({ number: nextNumber });
-        }
+          if (update.connection === "open") {
+            clearTimeout(timeout);
+            const nextNumber = { ...number, status: "connected" as const, lastSeenAt: new Date().toISOString() };
+            await this.events.onNumberStatusChange?.(nextNumber, { reason: "connected" });
+            resolve({
+              number: nextNumber
+            });
+          }
+          if (update.connection === "close" && update.lastDisconnect?.error) {
+            const code = (update.lastDisconnect.error as { output?: { statusCode?: number } }).output?.statusCode;
+            this.sockets.delete(number.id);
+            console.warn("WhatsApp connection closed", {
+              numberId: number.id,
+              tenantId: number.tenantId,
+              code,
+              message: update.lastDisconnect.error.message
+            });
+
+            if (code === DisconnectReason.restartRequired) {
+              const nextNumber = { ...number, status: "connecting" as const, lastSeenAt: new Date().toISOString() };
+              await this.events.onNumberStatusChange?.(nextNumber, { reason: "connection-restart-required" });
+              setTimeout(() => {
+                startSocket().catch((error) => console.error("WhatsApp restart failed", error));
+              }, 250);
+              return;
+            }
+
+            const badSession =
+              code === DisconnectReason.loggedOut ||
+              code === DisconnectReason.badSession ||
+              code === DisconnectReason.forbidden ||
+              code === DisconnectReason.multideviceMismatch;
+            const timedOut = code === DisconnectReason.timedOut;
+            if (badSession || timedOut) {
+              await rm(dir, { recursive: true, force: true });
+            }
+            const status: WaNumber["status"] = badSession || timedOut ? "disconnected" : "error";
+            const nextNumber = { ...number, status, lastSeenAt: new Date().toISOString() };
+            clearTimeout(timeout);
+            await this.events.onNumberStatusChange?.(nextNumber, {
+              reason: `connection-close:${code ?? "unknown"}`,
+              reconnectRequired: badSession
+            });
+            resolve({ number: nextNumber });
+          }
+        });
+      };
+
+      startSocket().catch((error) => {
+        clearTimeout(timeout);
+        console.error("WhatsApp connect failed", error);
+        resolve({ number: { ...number, status: "error" as const, lastSeenAt: new Date().toISOString() } });
       });
     });
   }
