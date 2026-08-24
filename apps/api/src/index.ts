@@ -4,6 +4,7 @@ import express from "express";
 import { adminRouter } from "./routes/admin.js";
 import { messagesRouter } from "./routes/messages.js";
 import { numbersRouter } from "./routes/numbers.js";
+import { startMessageWorker } from "./workers/messageWorker.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 4100);
@@ -30,3 +31,5 @@ app.use((req, res) => {
 app.listen(port, () => {
   console.log(`WA Gateway API listening on http://localhost:${port}`);
 });
+
+startMessageWorker();

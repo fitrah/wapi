@@ -180,6 +180,13 @@ export class MemoryStore implements Store {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  async listQueuedOutboundMessages(limit: number) {
+    return [...this.messages.values()]
+      .filter((message) => message.direction === "outbound" && message.status === "queued")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, limit);
+  }
+
   async countOutboundMessagesThisMonth(tenantId: string) {
     const month = now().slice(0, 7);
     return [...this.messages.values()].filter(

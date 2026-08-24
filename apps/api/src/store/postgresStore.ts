@@ -286,6 +286,18 @@ export class PostgresStore implements Store {
     return result.rows.map(mapMessage);
   }
 
+  async listQueuedOutboundMessages(limit: number) {
+    const result = await this.pool.query(
+      `select *
+       from messages
+       where direction = 'outbound' and status = 'queued'
+       order by created_at asc
+       limit $1`,
+      [limit]
+    );
+    return result.rows.map(mapMessage);
+  }
+
   async countOutboundMessagesThisMonth(tenantId: string) {
     const result = await this.pool.query(
       `select count(*)::int as count

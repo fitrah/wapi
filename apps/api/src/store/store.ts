@@ -14,5 +14,6 @@ export interface Store {
   createMessage(input: Omit<MessageLog, "id" | "createdAt">): Promise<MessageLog>;
   updateMessage(id: string, patch: Partial<MessageLog>): Promise<MessageLog>;
   listMessages(tenantId: string): Promise<MessageLog[]>;
+  listQueuedOutboundMessages(limit: number): Promise<MessageLog[]>;
   countOutboundMessagesThisMonth(tenantId: string): Promise<number>;
 }

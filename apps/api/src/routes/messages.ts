@@ -2,7 +2,6 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireTenant } from "../auth.js";
 import { store } from "../store/index.js";
-import { whatsAppDriver } from "./numbers.js";
 
 const sendSchema = z.object({
   numberId: z.string().min(1),
@@ -45,20 +44,5 @@ messagesRouter.post("/send-text", async (req, res) => {
     status: "queued"
   });
 
-  try {
-    const sent = await whatsAppDriver.sendText(number, parsed.data.recipient, parsed.data.body);
-    const updated = await store.updateMessage(message.id, {
-      status: "sent",
-      sentAt: new Date().toISOString(),
-      error: undefined,
-      ...sent
-    });
-    res.status(202).json({ data: updated });
-  } catch (error) {
-    const updated = await store.updateMessage(message.id, {
-      status: "failed",
-      error: error instanceof Error ? error.message : "Failed to send message"
-    });
-    res.status(503).json({ data: updated });
-  }
+  res.status(202).json({ data: message });
 });
