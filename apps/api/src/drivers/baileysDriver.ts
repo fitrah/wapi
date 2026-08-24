@@ -1,6 +1,6 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import P from "pino";
 import QRCode from "qrcode";
 import type { ConnectResult, WaNumber } from "../types.js";
@@ -11,14 +11,26 @@ export class BaileysDriver implements WhatsAppDriver {
 
   constructor(private sessionDir: string, private events: WhatsAppDriverEvents = {}) {}
 
+  private getSessionPath(number: WaNumber) {
+    return path.join(this.sessionDir, number.tenantId, number.id);
+  }
+
   async connect(number: WaNumber): Promise<ConnectResult> {
-    const dir = path.join(this.sessionDir, number.tenantId, number.id);
+    const dir = this.getSessionPath(number);
+    if (number.status === "error") {
+      await rm(dir, { recursive: true, force: true });
+    }
     await mkdir(dir, { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(dir);
+    const { version } = await fetchLatestBaileysVersion();
     const socket = makeWASocket({
       auth: state,
+      browser: Browsers.ubuntu("Chrome"),
+      markOnlineOnConnect: false,
       printQRInTerminal: false,
-      logger: P({ level: "silent" })
+      syncFullHistory: false,
+      version,
+      logger: P({ level: process.env.WA_LOG_LEVEL ?? "warn" })
     });
     this.sockets.set(number.id, socket);
     socket.ev.on("creds.update", saveCreds);
@@ -50,8 +62,18 @@ export class BaileysDriver implements WhatsAppDriver {
           const code = (update.lastDisconnect.error as { output?: { statusCode?: number } }).output?.statusCode;
           const status: WaNumber["status"] = code === DisconnectReason.loggedOut ? "disconnected" : "error";
           const reconnectRequired = code === DisconnectReason.loggedOut;
+          if (reconnectRequired) {
+            await rm(dir, { recursive: true, force: true });
+          }
+          this.sockets.delete(number.id);
           const nextNumber = { ...number, status, lastSeenAt: new Date().toISOString() };
           clearTimeout(timeout);
+          console.warn("WhatsApp connection closed", {
+            numberId: number.id,
+            tenantId: number.tenantId,
+            code,
+            message: update.lastDisconnect.error.message
+          });
           await this.events.onNumberStatusChange?.(nextNumber, {
             reason: `connection-close:${code ?? "unknown"}`,
             reconnectRequired
@@ -66,6 +88,7 @@ export class BaileysDriver implements WhatsAppDriver {
     const socket = this.sockets.get(number.id);
     await socket?.logout();
     this.sockets.delete(number.id);
+    await rm(this.getSessionPath(number), { recursive: true, force: true });
     return { ...number, status: "disconnected" as const, lastSeenAt: new Date().toISOString() };
   }
 
