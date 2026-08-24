@@ -293,18 +293,29 @@ function App() {
 
 function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState("free");
   const [tenantName, setTenantName] = useState("Wapi Demo");
   const [ownerName, setOwnerName] = useState("Demo Owner");
   const [email, setEmail] = useState("demo@wapi.local");
   const [password, setPassword] = useState("demo12345");
   const [notice, setNotice] = useState("");
 
+  useEffect(() => {
+    api<Plan[]>("/api/admin/plans")
+      .then((items) => {
+        setPlans(items);
+        if (items[0]) setSelectedPlan(items[0].slug);
+      })
+      .catch((error) => setNotice(error.message));
+  }, []);
+
   async function submit() {
     try {
       const payload =
         mode === "login"
           ? { email, password }
-          : { tenantName, ownerName, email, password, notificationEmail: email, plan: "free" };
+          : { tenantName, ownerName, email, password, notificationEmail: email, plan: selectedPlan };
       const result = await api<{ session: { token: string } }>(`/api/auth/${mode}`, {
         method: "POST",
         body: JSON.stringify(payload)
@@ -316,15 +327,55 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
   }
 
   return (
-    <main className="authShell">
-      <section className="authPanel">
+    <main className="landingShell">
+      <section className="landingContent">
         <div className="brand authBrand">
           <div className="brandIcon"><MessageSquareText size={20} /></div>
           <div>
             <strong>Wapi</strong>
-            <span>WA API Console</span>
+            <span>WA API gateway</span>
           </div>
         </div>
+        <h1>Kelola banyak nomor WhatsApp dari satu API.</h1>
+        <p className="landingLead">
+          SaaS gateway untuk connect nomor via QR, kirim pesan dari API, monitor session, dan terima alert ketika perlu scan ulang.
+        </p>
+        <div className="heroPreview" aria-hidden="true">
+          <div className="previewTop">
+            <span />
+            <span />
+            <span />
+          </div>
+          <div className="previewBody">
+            <div className="previewPhone">
+              <MessageSquareText size={32} />
+              <strong>Customer Care</strong>
+              <em data-status="qr">qr ready</em>
+            </div>
+            <div className="previewFlow">
+              <div><small>POST</small><code>/api/messages/send-text</code></div>
+              <div><small>Worker</small><code>queue + throttle</code></div>
+              <div><small>Alert</small><code>Resend reconnect notice</code></div>
+            </div>
+          </div>
+        </div>
+        <div className="landingPlans">
+          {plans.slice(0, 5).map((plan) => (
+            <button
+              className={selectedPlan === plan.slug ? "landingPlan selectedLandingPlan" : "landingPlan"}
+              key={plan.slug}
+              onClick={() => {
+                setSelectedPlan(plan.slug);
+                setMode("register");
+              }}
+            >
+              <strong>{plan.name}</strong>
+              <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}` : "Free"}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="authPanel">
         <div className="segmented">
           <button className={mode === "login" ? "activeSegment" : ""} onClick={() => setMode("login")}>Login</button>
           <button className={mode === "register" ? "activeSegment" : ""} onClick={() => setMode("register")}>Register</button>
@@ -333,6 +384,16 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
           <>
             <label>Workspace<input value={tenantName} onChange={(event) => setTenantName(event.target.value)} /></label>
             <label>Name<input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></label>
+            <label>
+              Package
+              <select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)}>
+                {plans.map((plan) => (
+                  <option key={plan.slug} value={plan.slug}>
+                    {plan.name} - {plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}
+                  </option>
+                ))}
+              </select>
+            </label>
           </>
         )}
         <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
