@@ -1,4 +1,4 @@
-import type { MessageLog, Plan, Tenant, WaNumber } from "../types.js";
+import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
 
 export interface Store {
   init?(): Promise<void>;
@@ -6,6 +6,17 @@ export interface Store {
   getTenant(id: string): Promise<Tenant | undefined>;
   listTenants(): Promise<Tenant[]>;
   createTenant(input: Pick<Tenant, "name" | "plan" | "maxNumbers" | "dailyMessageLimit" | "notificationEmail">): Promise<Tenant>;
+  createTenantAccount(input: {
+    tenantName: string;
+    ownerName: string;
+    email: string;
+    password: string;
+    notificationEmail?: string;
+    plan?: string;
+  }): Promise<{ tenant: Tenant; user: User; session: Session }>;
+  login(input: { email: string; password: string }): Promise<{ tenant: Tenant; user: User; session: Session } | undefined>;
+  getTenantBySessionToken(token: string): Promise<Tenant | undefined>;
+  getUserBySessionToken(token: string): Promise<User | undefined>;
   listPlans(): Promise<Plan[]>;
   listNumbers(tenantId: string): Promise<WaNumber[]>;
   createNumber(tenantId: string, label: string): Promise<WaNumber>;

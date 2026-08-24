@@ -22,6 +22,24 @@ export type Plan = {
   features: string[];
 };
 
+export type User = {
+  id: string;
+  tenantId: string;
+  email: string;
+  name: string;
+  role: "owner" | "admin" | "agent";
+  createdAt: string;
+};
+
+export type Session = {
+  id: string;
+  tenantId: string;
+  userId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
 export type WaNumber = {
   id: string;
   tenantId: string;

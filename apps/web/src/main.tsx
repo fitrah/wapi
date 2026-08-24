@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Activity, KeyRound, Link2, MessageSquareText, Plus, QrCode, RefreshCw, Send, Smartphone } from "lucide-react";
+import { Activity, KeyRound, Link2, LogIn, MessageSquareText, Plus, QrCode, RefreshCw, Send, Smartphone } from "lucide-react";
 import "./styles.css";
 
 type Tenant = {
@@ -10,6 +10,23 @@ type Tenant = {
   maxNumbers: number;
   dailyMessageLimit: number;
   apiKey: string;
+};
+
+type User = {
+  id: string;
+  email: string;
+  name: string;
+  role: "owner" | "admin" | "agent";
+};
+
+type Plan = {
+  slug: string;
+  name: string;
+  monthlyPriceIdr: number;
+  monthlyMessageLimit: number | null;
+  maxNumbers: number;
+  maxAgents: number;
+  attachmentEnabled: boolean;
 };
 
 type WaNumber = {
@@ -32,14 +49,14 @@ type MessageLog = {
 };
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
-const demoKey = "demo_key";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem("wapi_session");
   const res = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
-      "x-api-key": demoKey,
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...init?.headers
     }
   });
@@ -49,14 +66,17 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [token, setToken] = useState(() => localStorage.getItem("wapi_session") ?? "");
+  const [user, setUser] = useState<User | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [numbers, setNumbers] = useState<WaNumber[]>([]);
   const [messages, setMessages] = useState<MessageLog[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [label, setLabel] = useState("");
   const [recipient, setRecipient] = useState("6281234567890");
   const [body, setBody] = useState("Halo, ini test dari Wapi.");
-  const [selectedNumberId, setSelectedNumberId] = useState("demo_number");
+  const [selectedNumberId, setSelectedNumberId] = useState("");
   const [notice, setNotice] = useState("");
 
   const activeTenant = tenants[0];
@@ -66,20 +86,37 @@ function App() {
   );
 
   async function refresh() {
-    const [tenantRes, numberRes, messageRes] = await Promise.all([
-      api<{ data: Tenant[] }>("/api/admin/tenants").then((x) => x.data ?? x),
-      api<{ data: WaNumber[] }>("/api/numbers").then((x) => x.data ?? x),
-      api<{ data: MessageLog[] }>("/api/messages").then((x) => x.data ?? x)
+    const [meRes, planRes, numberRes, messageRes] = await Promise.all([
+      api<{ tenant: Tenant; user: User }>("/api/auth/me"),
+      api<Plan[]>("/api/admin/plans"),
+      api<WaNumber[]>("/api/numbers"),
+      api<MessageLog[]>("/api/messages")
     ]);
-    setTenants(tenantRes as Tenant[]);
-    setNumbers(numberRes as WaNumber[]);
-    setMessages(messageRes as MessageLog[]);
-    if (!selectedNumberId && (numberRes as WaNumber[])[0]) setSelectedNumberId((numberRes as WaNumber[])[0].id);
+    setTenants([meRes.tenant]);
+    setUser(meRes.user);
+    setPlans(planRes);
+    setNumbers(numberRes);
+    setMessages(messageRes);
+    if (!selectedNumberId && numberRes[0]) setSelectedNumberId(numberRes[0].id);
   }
 
   useEffect(() => {
-    refresh().catch((error) => setNotice(error.message));
-  }, []);
+    if (token) refresh().catch((error) => setNotice(error.message));
+  }, [token]);
+
+  function handleAuth(nextToken: string) {
+    localStorage.setItem("wapi_session", nextToken);
+    setToken(nextToken);
+  }
+
+  function logout() {
+    localStorage.removeItem("wapi_session");
+    setToken("");
+    setUser(null);
+    setTenants([]);
+    setNumbers([]);
+    setMessages([]);
+  }
 
   async function connect(numberId: string) {
     const result = await api<{ data: WaNumber; qrDataUrl?: string }>(`/api/numbers/${numberId}/connect`, { method: "POST" });
@@ -102,9 +139,11 @@ function App() {
       method: "POST",
       body: JSON.stringify({ numberId: selectedNumber.id, recipient, body })
     });
-    setNotice("Pesan masuk queue dan diproses.");
+    setNotice("Pesan masuk queue dan diproses worker.");
     await refresh();
   }
+
+  if (!token) return <AuthScreen onAuth={handleAuth} />;
 
   return (
     <main className="shell">
@@ -120,35 +159,38 @@ function App() {
           <button className="active"><Activity size={17} /> Overview</button>
           <button><Smartphone size={17} /> Numbers</button>
           <button><Send size={17} /> Messages</button>
-          <button><KeyRound size={17} /> API Keys</button>
+          <button><KeyRound size={17} /> Packages</button>
         </nav>
       </aside>
 
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p>{activeTenant?.name ?? "Demo Tenant"}</p>
+            <p>{activeTenant?.name ?? "Workspace"} · {user?.email ?? ""}</p>
             <h1>WA API gateway for multi-number automation</h1>
           </div>
-          <button onClick={() => refresh()}><RefreshCw size={16} /> Refresh</button>
+          <div className="topActions">
+            <button onClick={() => refresh()}><RefreshCw size={16} /> Refresh</button>
+            <button onClick={logout}><LogIn size={16} /> Logout</button>
+          </div>
         </header>
 
         <section className="stats">
           <div>
             <span>Plan</span>
-            <strong>{activeTenant?.plan ?? "starter"}</strong>
+            <strong>{activeTenant?.plan ?? "free"}</strong>
           </div>
           <div>
             <span>Numbers</span>
             <strong>{numbers.length}/{activeTenant?.maxNumbers ?? 0}</strong>
           </div>
           <div>
-            <span>Daily Limit</span>
-            <strong>{activeTenant?.dailyMessageLimit ?? 0}</strong>
+            <span>Monthly Limit</span>
+            <strong>{activeTenant?.dailyMessageLimit ? activeTenant.dailyMessageLimit.toLocaleString("id-ID") : "Unlimited"}</strong>
           </div>
           <div>
-            <span>API Key</span>
-            <code>{demoKey}</code>
+            <span>Account</span>
+            <code>{user?.role ?? "-"}</code>
           </div>
         </section>
 
@@ -212,6 +254,23 @@ function App() {
 
         <section className="panel tablePanel">
           <div className="panelHeader">
+            <h2>Packages</h2>
+            <KeyRound size={18} />
+          </div>
+          <div className="planGrid">
+            {plans.map((plan) => (
+              <div className="plan" key={plan.slug}>
+                <strong>{plan.name}</strong>
+                <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}</span>
+                <p>{plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited messages"}</p>
+                <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel tablePanel">
+          <div className="panelHeader">
             <h2>Message Log</h2>
             <MessageSquareText size={18} />
           </div>
@@ -227,6 +286,59 @@ function App() {
             {!messages.length && <div className="empty">Belum ada pesan.</div>}
           </div>
         </section>
+      </section>
+    </main>
+  );
+}
+
+function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [tenantName, setTenantName] = useState("Wapi Demo");
+  const [ownerName, setOwnerName] = useState("Demo Owner");
+  const [email, setEmail] = useState("demo@wapi.local");
+  const [password, setPassword] = useState("demo12345");
+  const [notice, setNotice] = useState("");
+
+  async function submit() {
+    try {
+      const payload =
+        mode === "login"
+          ? { email, password }
+          : { tenantName, ownerName, email, password, notificationEmail: email, plan: "free" };
+      const result = await api<{ session: { token: string } }>(`/api/auth/${mode}`, {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      onAuth(result.session.token);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Auth failed");
+    }
+  }
+
+  return (
+    <main className="authShell">
+      <section className="authPanel">
+        <div className="brand authBrand">
+          <div className="brandIcon"><MessageSquareText size={20} /></div>
+          <div>
+            <strong>Wapi</strong>
+            <span>WA API Console</span>
+          </div>
+        </div>
+        <div className="segmented">
+          <button className={mode === "login" ? "activeSegment" : ""} onClick={() => setMode("login")}>Login</button>
+          <button className={mode === "register" ? "activeSegment" : ""} onClick={() => setMode("register")}>Register</button>
+        </div>
+        {mode === "register" && (
+          <>
+            <label>Workspace<input value={tenantName} onChange={(event) => setTenantName(event.target.value)} /></label>
+            <label>Name<input value={ownerName} onChange={(event) => setOwnerName(event.target.value)} /></label>
+          </>
+        )}
+        <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        {notice && <div className="notice">{notice}</div>}
+        <button className="wide primary" onClick={submit}><LogIn size={16} /> {mode === "login" ? "Login" : "Create Workspace"}</button>
       </section>
     </main>
   );

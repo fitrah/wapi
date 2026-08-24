@@ -11,6 +11,16 @@ declare global {
 }
 
 export async function requireTenant(req: Request, res: Response, next: NextFunction) {
+  const bearer = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearer) {
+    const tenant = await store.getTenantBySessionToken(bearer);
+    if (tenant) {
+      req.tenant = tenant;
+      next();
+      return;
+    }
+  }
+
   const header = req.header("x-api-key") ?? "";
   const tenant = await store.getTenantByApiKey(header);
   if (!tenant) {

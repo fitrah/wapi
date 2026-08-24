@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
-import type { MessageLog, Plan, Tenant, WaNumber } from "../types.js";
+import { hashPassword, verifyPassword } from "../auth/password.js";
+import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
 import type { Store } from "./store.js";
 
 const { Pool } = pg;
@@ -113,6 +114,28 @@ function mapMessage(row: Record<string, unknown>): MessageLog {
   };
 }
 
+function mapUser(row: Record<string, unknown>): User {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    email: String(row.email),
+    name: String(row.name),
+    role: row.role as User["role"],
+    createdAt: new Date(String(row.created_at)).toISOString()
+  };
+}
+
+function mapSession(row: Record<string, unknown>, token: string): Session {
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    userId: String(row.user_id),
+    token,
+    expiresAt: new Date(String(row.expires_at)).toISOString(),
+    createdAt: new Date(String(row.created_at)).toISOString()
+  };
+}
+
 export class PostgresStore implements Store {
   private pool: pg.Pool;
 
@@ -168,8 +191,29 @@ export class PostgresStore implements Store {
         created_at timestamptz not null default now()
       );
 
+      create table if not exists users (
+        id uuid primary key,
+        tenant_id uuid not null references tenants(id) on delete cascade,
+        email text not null unique,
+        name text not null,
+        role text not null check (role in ('owner', 'admin', 'agent')),
+        password_hash text not null,
+        created_at timestamptz not null default now()
+      );
+
+      create table if not exists auth_sessions (
+        id uuid primary key,
+        tenant_id uuid not null references tenants(id) on delete cascade,
+        user_id uuid not null references users(id) on delete cascade,
+        token_hash text not null unique,
+        expires_at timestamptz not null,
+        created_at timestamptz not null default now()
+      );
+
       create index if not exists messages_tenant_created_idx on messages(tenant_id, created_at desc);
       create index if not exists whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);
+      create index if not exists users_tenant_idx on users(tenant_id);
+      create index if not exists auth_sessions_token_idx on auth_sessions(token_hash);
     `);
 
     await this.seedDemoTenant();
@@ -201,6 +245,89 @@ export class PostgresStore implements Store {
       [randomUUID(), input.name, input.plan, input.maxNumbers, input.dailyMessageLimit, input.notificationEmail ?? null, hashApiKey(apiKey)]
     );
     return mapTenant(result.rows[0], apiKey);
+  }
+
+  async createTenantAccount(input: {
+    tenantName: string;
+    ownerName: string;
+    email: string;
+    password: string;
+    notificationEmail?: string;
+    plan?: string;
+  }) {
+    const normalizedEmail = input.email.toLowerCase();
+    const existing = await this.pool.query("select 1 from users where email = $1", [normalizedEmail]);
+    if (existing.rows[0]) throw new Error("Email already registered");
+
+    const plan = plans.find((item) => item.slug === (input.plan ?? "free")) ?? plans[0]!;
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const apiKey = `wapi_${randomUUID().replaceAll("-", "")}`;
+      const tenantResult = await client.query(
+        `insert into tenants (id, name, plan, max_numbers, daily_message_limit, notification_email, api_key_hash)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning *`,
+        [
+          randomUUID(),
+          input.tenantName,
+          plan.slug,
+          plan.maxNumbers,
+          plan.monthlyMessageLimit ?? 0,
+          input.notificationEmail ?? normalizedEmail,
+          hashApiKey(apiKey)
+        ]
+      );
+      const tenant = mapTenant(tenantResult.rows[0], apiKey);
+      const userResult = await client.query(
+        `insert into users (id, tenant_id, email, name, role, password_hash)
+         values ($1, $2, $3, $4, 'owner', $5)
+         returning *`,
+        [randomUUID(), tenant.id, normalizedEmail, input.ownerName, await hashPassword(input.password)]
+      );
+      const user = mapUser(userResult.rows[0]);
+      const session = await this.createSession(user.tenantId, user.id, client);
+      await client.query("commit");
+      return { tenant, user, session };
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async login(input: { email: string; password: string }) {
+    const result = await this.pool.query("select * from users where email = $1", [input.email.toLowerCase()]);
+    const row = result.rows[0];
+    if (!row || !(await verifyPassword(input.password, String(row.password_hash)))) return undefined;
+    const tenant = await this.getTenant(String(row.tenant_id));
+    if (!tenant) return undefined;
+    const user = mapUser(row);
+    const session = await this.createSession(user.tenantId, user.id);
+    return { tenant, user, session };
+  }
+
+  async getTenantBySessionToken(token: string) {
+    const result = await this.pool.query(
+      `select t.*
+       from auth_sessions s
+       join tenants t on t.id = s.tenant_id
+       where s.token_hash = $1 and s.expires_at > now()`,
+      [hashApiKey(token)]
+    );
+    return result.rows[0] ? mapTenant(result.rows[0]) : undefined;
+  }
+
+  async getUserBySessionToken(token: string) {
+    const result = await this.pool.query(
+      `select u.*
+       from auth_sessions s
+       join users u on u.id = s.user_id
+       where s.token_hash = $1 and s.expires_at > now()`,
+      [hashApiKey(token)]
+    );
+    return result.rows[0] ? mapUser(result.rows[0]) : undefined;
   }
 
   async listPlans() {
@@ -326,5 +453,23 @@ export class PostgresStore implements Store {
        on conflict (id) do nothing`,
       [numberId, tenantId]
     );
+    const password = process.env.SEED_DEMO_PASSWORD ?? "demo12345";
+    await this.pool.query(
+      `insert into users (id, tenant_id, email, name, role, password_hash)
+       values ($1, $2, 'demo@wapi.local', 'Demo Owner', 'owner', $3)
+       on conflict (email) do nothing`,
+      [process.env.SEED_DEMO_USER_ID ?? "00000000-0000-4000-8000-000000000003", tenantId, await hashPassword(password)]
+    );
+  }
+
+  private async createSession(tenantId: string, userId: string, client: pg.PoolClient | pg.Pool = this.pool) {
+    const token = `sess_${randomUUID().replaceAll("-", "")}`;
+    const result = await client.query(
+      `insert into auth_sessions (id, tenant_id, user_id, token_hash, expires_at)
+       values ($1, $2, $3, $4, now() + interval '30 days')
+       returning *`,
+      [randomUUID(), tenantId, userId, hashApiKey(token)]
+    );
+    return mapSession(result.rows[0], token);
   }
 }

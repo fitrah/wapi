@@ -2,6 +2,7 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { adminRouter } from "./routes/admin.js";
+import { authRouter } from "./routes/auth.js";
 import { messagesRouter } from "./routes/messages.js";
 import { numbersRouter } from "./routes/numbers.js";
 import { startMessageWorker } from "./workers/messageWorker.js";
@@ -21,6 +22,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/admin", adminRouter);
+app.use("/api/auth", authRouter);
 app.use("/api/numbers", numbersRouter);
 app.use("/api/messages", messagesRouter);
 

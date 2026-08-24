@@ -107,6 +107,11 @@ nav button:hover {
   margin-bottom: 20px;
 }
 
+.topActions {
+  display: flex;
+  gap: 8px;
+}
+
 .topbar p,
 .topbar h1 {
   margin: 0;
@@ -172,6 +177,48 @@ code {
   display: grid;
   gap: 16px;
   grid-template-columns: minmax(280px, 1fr) minmax(320px, 1fr);
+}
+
+.authShell {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.authPanel {
+  background: #ffffff;
+  border: 1px solid #dce2da;
+  border-radius: 8px;
+  max-width: 420px;
+  padding: 22px;
+  width: 100%;
+}
+
+.authBrand {
+  color: #17211c;
+  margin-bottom: 18px;
+}
+
+.segmented {
+  background: #eef4ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 16px;
+  padding: 4px;
+}
+
+.segmented button {
+  background: transparent;
+  border-color: transparent;
+}
+
+.segmented .activeSegment {
+  background: #ffffff;
+  border-color: #cfdbd2;
 }
 
 .panel {
@@ -302,6 +349,33 @@ em[data-status="disconnected"] {
   margin-top: 16px;
 }
 
+.planGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.plan {
+  background: #fbfcfa;
+  border: 1px solid #e3e8e1;
+  border-radius: 8px;
+  display: grid;
+  gap: 5px;
+  min-height: 116px;
+  padding: 12px;
+}
+
+.plan span {
+  color: #1e7b49;
+  font-weight: 700;
+}
+
+.plan p,
+.plan small {
+  color: #66756b;
+  margin: 0;
+}
+
 .table {
   display: grid;
   gap: 8px;
@@ -351,13 +425,19 @@ em[data-status="disconnected"] {
 
   .topbar,
   .stats,
-  .grid {
+  .grid,
+  .planGrid {
     grid-template-columns: 1fr;
   }
 
   .topbar {
     align-items: stretch;
     display: grid;
+  }
+
+  .topActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .row {

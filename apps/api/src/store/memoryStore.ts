@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { MessageLog, Plan, Tenant, WaNumber } from "../types.js";
+import { hashPassword, verifyPassword } from "../auth/password.js";
+import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
 import type { Store } from "./store.js";
 
 const now = () => new Date().toISOString();
 
 export class MemoryStore implements Store {
   tenants = new Map<string, Tenant>();
+  users = new Map<string, User & { passwordHash: string }>();
+  sessions = new Map<string, Session>();
   numbers = new Map<string, WaNumber>();
   messages = new Map<string, MessageLog>();
   plans: Plan[] = [
@@ -92,6 +95,20 @@ export class MemoryStore implements Store {
     };
     this.tenants.set(tenant.id, tenant);
     this.numbers.set(number.id, number);
+    hashPassword(process.env.SEED_DEMO_PASSWORD ?? "demo12345")
+      .then((passwordHash) => {
+        const user: User & { passwordHash: string } = {
+          id: "demo_user",
+          tenantId: tenant.id,
+          email: "demo@wapi.local",
+          name: "Demo Owner",
+          role: "owner",
+          createdAt: now(),
+          passwordHash
+        };
+        this.users.set(user.email, user);
+      })
+      .catch((error) => console.error("Cannot seed demo user", error));
   }
 
   async getTenantByApiKey(apiKey: string) {
@@ -115,6 +132,68 @@ export class MemoryStore implements Store {
     };
     this.tenants.set(tenant.id, tenant);
     return tenant;
+  }
+
+  async createTenantAccount(input: {
+    tenantName: string;
+    ownerName: string;
+    email: string;
+    password: string;
+    notificationEmail?: string;
+    plan?: string;
+  }) {
+    const plan = this.plans.find((item) => item.slug === (input.plan ?? "free")) ?? this.plans[0]!;
+    const tenant = await this.createTenant({
+      name: input.tenantName,
+      plan: plan.slug,
+      maxNumbers: plan.maxNumbers,
+      dailyMessageLimit: plan.monthlyMessageLimit ?? 0,
+      notificationEmail: input.notificationEmail ?? input.email
+    });
+    const user: User & { passwordHash: string } = {
+      id: randomUUID(),
+      tenantId: tenant.id,
+      email: input.email.toLowerCase(),
+      name: input.ownerName,
+      role: "owner",
+      createdAt: now(),
+      passwordHash: await hashPassword(input.password)
+    };
+    this.users.set(user.email, user);
+    const session = this.createSession(tenant.id, user.id);
+    return { tenant, user, session };
+  }
+
+  async login(input: { email: string; password: string }) {
+    const user = this.users.get(input.email.toLowerCase());
+    if (!user || !(await verifyPassword(input.password, user.passwordHash))) return undefined;
+    const tenant = await this.getTenant(user.tenantId);
+    if (!tenant) return undefined;
+    return { tenant, user, session: this.createSession(tenant.id, user.id) };
+  }
+
+  async getTenantBySessionToken(token: string) {
+    const session = [...this.sessions.values()].find((item) => item.token === token && item.expiresAt > now());
+    return session ? this.getTenant(session.tenantId) : undefined;
+  }
+
+  async getUserBySessionToken(token: string) {
+    const session = [...this.sessions.values()].find((item) => item.token === token && item.expiresAt > now());
+    if (!session) return undefined;
+    return [...this.users.values()].find((user) => user.id === session.userId);
+  }
+
+  private createSession(tenantId: string, userId: string): Session {
+    const session: Session = {
+      id: randomUUID(),
+      tenantId,
+      userId,
+      token: `sess_${randomUUID().replaceAll("-", "")}`,
+      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: now()
+    };
+    this.sessions.set(session.id, session);
+    return session;
   }
 
   async listPlans() {

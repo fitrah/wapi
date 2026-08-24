@@ -44,8 +44,29 @@ create table webhooks (
   created_at timestamptz not null default now()
 );
 
+create table users (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  email text not null unique,
+  name text not null,
+  role text not null check (role in ('owner', 'admin', 'agent')),
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create table auth_sessions (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
 create index messages_tenant_created_idx on messages(tenant_id, created_at desc);
 create index whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);
+create index users_tenant_idx on users(tenant_id);
+create index auth_sessions_token_idx on auth_sessions(token_hash);
 
 -- Reference packages are modeled in code so pricing can evolve without a migration.
 -- Initial package ladder follows Fonnte-style monthly quotas/features:
