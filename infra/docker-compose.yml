@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wagw
+      POSTGRES_USER: wagw
+      POSTGRES_PASSWORD: wagw
+    ports:
+      - "54329:5432"
+    volumes:
+      - wagw-postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6389:6379"
+    volumes:
+      - wagw-redis:/data
+
+volumes:
+  wagw-postgres:
+  wagw-redis:

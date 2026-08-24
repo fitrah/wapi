@@ -1,0 +1,19 @@
+{
+  "name": "wa-gateway-saas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,green \"npm run dev --workspace @wagw/api\" \"npm run dev --workspace @wagw/web\"",
+    "build": "npm run build --workspace @wagw/api && npm run build --workspace @wagw/web",
+    "typecheck": "npm run typecheck --workspace @wagw/api && npm run typecheck --workspace @wagw/web"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+apps/*/dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.wa-sessions/
+npm-debug.log*
