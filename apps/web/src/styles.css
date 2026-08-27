@@ -130,7 +130,7 @@ nav button:hover {
 .stats {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 16px;
 }
 
@@ -154,7 +154,8 @@ nav button:hover {
 }
 
 .stats strong {
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1.15;
 }
 
 code {

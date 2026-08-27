@@ -53,6 +53,14 @@ type MessageLog = {
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 type View = "overview" | "numbers" | "messages" | "packages" | "api";
 
+function canExtendLogRetention(planSlug?: string) {
+  return planSlug === "super" || planSlug === "ultra";
+}
+
+function logRetentionText(planSlug?: string) {
+  return canExtendLogRetention(planSlug) ? "30 days + manual extend" : "30 days";
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const json = await apiRaw<{ data?: T } & T>(path, init);
   return json.data ?? json;
@@ -242,6 +250,10 @@ function App() {
             <strong>{activeTenant?.dailyMessageLimit ? activeTenant.dailyMessageLimit.toLocaleString("id-ID") : "Unlimited"}</strong>
           </div>
           <div>
+            <span>Log Retention</span>
+            <strong>{logRetentionText(activeTenant?.plan)}</strong>
+          </div>
+          <div>
             <span>Account</span>
             <code>{user?.role ?? "-"}</code>
           </div>
@@ -319,6 +331,7 @@ function App() {
                 <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}</span>
                 <p>{plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited messages"}</p>
                 <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
+                <small>Log {logRetentionText(plan.slug)}</small>
                 <button
                   className={activeTenant?.plan === plan.slug ? "packageButton currentPackage" : "packageButton"}
                   disabled={activeTenant?.plan === plan.slug || updatingPlan === plan.slug}
@@ -355,7 +368,7 @@ function App() {
         {(activeView === "overview" || activeView === "messages") && <section className="panel tablePanel">
           <div className="panelHeader">
             <h2>Message Log</h2>
-            {(activeTenant?.plan === "super" || activeTenant?.plan === "ultra") ? (
+            {canExtendLogRetention(activeTenant?.plan) ? (
               <button className="smallAction" disabled={extendingLogs} onClick={extendMessageRetention}>
                 {extendingLogs ? "Extending..." : "+30 days"}
               </button>
