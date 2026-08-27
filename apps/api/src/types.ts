@@ -19,6 +19,8 @@ export type Plan = {
   attachmentEnabled: boolean;
   autoreplySpreadsheetEnabled: boolean;
   deviceNotificationEnabled: boolean;
+  logRetentionDays: number;
+  logRetentionExtendable: boolean;
   features: string[];
 };
 

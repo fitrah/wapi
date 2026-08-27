@@ -22,6 +22,14 @@ const updatePackageSchema = z.object({
 
 export const authRouter = Router();
 
+function isPlatformAdminEmail(email: string) {
+  return (process.env.PLATFORM_ADMIN_EMAILS ?? "fitrahajah@gmail.com")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(email.toLowerCase());
+}
+
 authRouter.post("/register", async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -63,7 +71,7 @@ authRouter.get("/me", async (req, res) => {
     res.status(401).json({ error: "Invalid session token" });
     return;
   }
-  res.json({ data: { tenant, user } });
+  res.json({ data: { tenant, user: { ...user, isPlatformAdmin: isPlatformAdminEmail(user.email) } } });
 });
 
 authRouter.patch("/me/package", async (req, res) => {

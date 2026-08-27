@@ -17,6 +17,7 @@ type User = {
   email: string;
   name: string;
   role: "owner" | "admin" | "agent";
+  isPlatformAdmin?: boolean;
 };
 
 type Plan = {
@@ -27,6 +28,23 @@ type Plan = {
   maxNumbers: number;
   maxAgents: number;
   attachmentEnabled: boolean;
+  autoreplySpreadsheetEnabled: boolean;
+  deviceNotificationEnabled: boolean;
+  logRetentionDays: number;
+  logRetentionExtendable: boolean;
+};
+
+type PlanDraft = {
+  name: string;
+  monthlyPriceIdr: string;
+  monthlyMessageLimit: string;
+  maxNumbers: string;
+  maxAgents: string;
+  attachmentEnabled: boolean;
+  autoreplySpreadsheetEnabled: boolean;
+  deviceNotificationEnabled: boolean;
+  logRetentionDays: string;
+  logRetentionExtendable: boolean;
 };
 
 type WaNumber = {
@@ -53,12 +71,28 @@ type MessageLog = {
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
 type View = "overview" | "numbers" | "messages" | "packages" | "api";
 
-function canExtendLogRetention(planSlug?: string) {
-  return planSlug === "super" || planSlug === "ultra";
+function canExtendLogRetention(plan?: Pick<Plan, "logRetentionExtendable">) {
+  return Boolean(plan?.logRetentionExtendable);
 }
 
-function logRetentionText(planSlug?: string) {
-  return canExtendLogRetention(planSlug) ? "30 days + manual extend" : "30 days";
+function logRetentionText(plan?: Pick<Plan, "logRetentionDays" | "logRetentionExtendable">) {
+  const days = plan?.logRetentionDays ?? 30;
+  return plan?.logRetentionExtendable ? `${days} days + manual extend` : `${days} days`;
+}
+
+function toPlanDraft(plan: Plan): PlanDraft {
+  return {
+    name: plan.name,
+    monthlyPriceIdr: String(plan.monthlyPriceIdr),
+    monthlyMessageLimit: plan.monthlyMessageLimit === null ? "" : String(plan.monthlyMessageLimit),
+    maxNumbers: String(plan.maxNumbers),
+    maxAgents: String(plan.maxAgents),
+    attachmentEnabled: plan.attachmentEnabled,
+    autoreplySpreadsheetEnabled: plan.autoreplySpreadsheetEnabled,
+    deviceNotificationEnabled: plan.deviceNotificationEnabled,
+    logRetentionDays: String(plan.logRetentionDays),
+    logRetentionExtendable: plan.logRetentionExtendable
+  };
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -88,6 +122,7 @@ function App() {
   const [numbers, setNumbers] = useState<WaNumber[]>([]);
   const [messages, setMessages] = useState<MessageLog[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [planDrafts, setPlanDrafts] = useState<Record<string, PlanDraft>>({});
   const [activeView, setActiveView] = useState<View>("overview");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [updatingPlan, setUpdatingPlan] = useState("");
@@ -103,6 +138,7 @@ function App() {
   const [notice, setNotice] = useState("");
 
   const activeTenant = tenants[0];
+  const activePlan = plans.find((plan) => plan.slug === activeTenant?.plan);
   const selectedNumber = useMemo(
     () => numbers.find((number) => number.id === selectedNumberId) ?? numbers[0],
     [numbers, selectedNumberId]
@@ -124,6 +160,7 @@ function App() {
     setTenants([meRes.tenant]);
     setUser(meRes.user);
     setPlans(planRes);
+    setPlanDrafts(Object.fromEntries(planRes.map((plan) => [plan.slug, toPlanDraft(plan)])));
     setNumbers(numberRes);
     setMessages(messageRes);
     if (!selectedNumberId && numberRes[0]) setSelectedNumberId(numberRes[0].id);
@@ -190,6 +227,40 @@ function App() {
     }
   }
 
+  function updatePlanDraft(slug: string, patch: Partial<PlanDraft>) {
+    setPlanDrafts((current) => ({
+      ...current,
+      [slug]: { ...current[slug]!, ...patch }
+    }));
+  }
+
+  async function savePlan(slug: string) {
+    const draft = planDrafts[slug];
+    if (!draft) return;
+    setUpdatingPlan(slug);
+    try {
+      const payload = {
+        name: draft.name,
+        monthlyPriceIdr: Number(draft.monthlyPriceIdr || 0),
+        monthlyMessageLimit: draft.monthlyMessageLimit.trim() ? Number(draft.monthlyMessageLimit) : null,
+        maxNumbers: Number(draft.maxNumbers || 1),
+        maxAgents: Number(draft.maxAgents || 0),
+        attachmentEnabled: draft.attachmentEnabled,
+        autoreplySpreadsheetEnabled: draft.autoreplySpreadsheetEnabled,
+        deviceNotificationEnabled: draft.deviceNotificationEnabled,
+        logRetentionDays: Number(draft.logRetentionDays || 30),
+        logRetentionExtendable: draft.logRetentionExtendable
+      };
+      const updated = await api<Plan>(`/api/admin/plans/${slug}`, { method: "PATCH", body: JSON.stringify(payload) });
+      setNotice(`${updated.name} package values saved.`);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Package values update failed.");
+    } finally {
+      setUpdatingPlan("");
+    }
+  }
+
   async function extendMessageRetention() {
     setExtendingLogs(true);
     try {
@@ -251,7 +322,7 @@ function App() {
           </div>
           <div>
             <span>Log Retention</span>
-            <strong>{logRetentionText(activeTenant?.plan)}</strong>
+            <strong>{logRetentionText(activePlan)}</strong>
           </div>
           <div>
             <span>Account</span>
@@ -331,7 +402,22 @@ function App() {
                 <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}</span>
                 <p>{plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited messages"}</p>
                 <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
-                <small>Log {logRetentionText(plan.slug)}</small>
+                <small>Log {logRetentionText(plan)}</small>
+                {user?.isPlatformAdmin && planDrafts[plan.slug] && (
+                  <div className="packageEditor">
+                    <label>Name<input value={planDrafts[plan.slug].name} onChange={(event) => updatePlanDraft(plan.slug, { name: event.target.value })} /></label>
+                    <label>Price<input inputMode="numeric" value={planDrafts[plan.slug].monthlyPriceIdr} onChange={(event) => updatePlanDraft(plan.slug, { monthlyPriceIdr: event.target.value })} /></label>
+                    <label>Messages<input inputMode="numeric" placeholder="blank = unlimited" value={planDrafts[plan.slug].monthlyMessageLimit} onChange={(event) => updatePlanDraft(plan.slug, { monthlyMessageLimit: event.target.value })} /></label>
+                    <label>Numbers<input inputMode="numeric" value={planDrafts[plan.slug].maxNumbers} onChange={(event) => updatePlanDraft(plan.slug, { maxNumbers: event.target.value })} /></label>
+                    <label>Agents<input inputMode="numeric" value={planDrafts[plan.slug].maxAgents} onChange={(event) => updatePlanDraft(plan.slug, { maxAgents: event.target.value })} /></label>
+                    <label>Log days<input inputMode="numeric" value={planDrafts[plan.slug].logRetentionDays} onChange={(event) => updatePlanDraft(plan.slug, { logRetentionDays: event.target.value })} /></label>
+                    <label className="checkLine"><input type="checkbox" checked={planDrafts[plan.slug].attachmentEnabled} onChange={(event) => updatePlanDraft(plan.slug, { attachmentEnabled: event.target.checked })} /> Attachment</label>
+                    <label className="checkLine"><input type="checkbox" checked={planDrafts[plan.slug].logRetentionExtendable} onChange={(event) => updatePlanDraft(plan.slug, { logRetentionExtendable: event.target.checked })} /> Extend log</label>
+                    <button className="packageButton" disabled={updatingPlan === plan.slug} onClick={() => savePlan(plan.slug)}>
+                      {updatingPlan === plan.slug ? "Saving..." : "Save values"}
+                    </button>
+                  </div>
+                )}
                 <button
                   className={activeTenant?.plan === plan.slug ? "packageButton currentPackage" : "packageButton"}
                   disabled={activeTenant?.plan === plan.slug || updatingPlan === plan.slug}
@@ -368,9 +454,9 @@ function App() {
         {(activeView === "overview" || activeView === "messages") && <section className="panel tablePanel">
           <div className="panelHeader">
             <h2>Message Log</h2>
-            {canExtendLogRetention(activeTenant?.plan) ? (
+            {canExtendLogRetention(activePlan) ? (
               <button className="smallAction" disabled={extendingLogs} onClick={extendMessageRetention}>
-                {extendingLogs ? "Extending..." : "+30 days"}
+                {extendingLogs ? "Extending..." : `+${activePlan?.logRetentionDays ?? 30} days`}
               </button>
             ) : <MessageSquareText size={18} />}
           </div>

@@ -64,6 +64,21 @@ create table auth_sessions (
   created_at timestamptz not null default now()
 );
 
+create table package_settings (
+  slug text primary key,
+  name text not null,
+  monthly_price_idr integer not null,
+  monthly_message_limit integer,
+  max_numbers integer not null,
+  max_agents integer not null,
+  attachment_enabled boolean not null,
+  autoreply_spreadsheet_enabled boolean not null,
+  device_notification_enabled boolean not null,
+  log_retention_days integer not null,
+  log_retention_extendable boolean not null,
+  updated_at timestamptz not null default now()
+);
+
 create index messages_tenant_created_idx on messages(tenant_id, created_at desc);
 create index messages_expires_at_idx on messages(expires_at);
 create index whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);

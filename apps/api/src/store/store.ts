@@ -2,6 +2,21 @@ import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types
 
 export type CreateMessageInput = Omit<MessageLog, "id" | "createdAt" | "expiresAt"> & { expiresAt?: string };
 export type RetentionExtension = { count: number; expiresAt?: string };
+export type UpdatePlanInput = Partial<
+  Pick<
+    Plan,
+    | "name"
+    | "monthlyPriceIdr"
+    | "monthlyMessageLimit"
+    | "maxNumbers"
+    | "maxAgents"
+    | "attachmentEnabled"
+    | "autoreplySpreadsheetEnabled"
+    | "deviceNotificationEnabled"
+    | "logRetentionDays"
+    | "logRetentionExtendable"
+  >
+>;
 
 export interface Store {
   init?(): Promise<void>;
@@ -22,6 +37,7 @@ export interface Store {
   getTenantBySessionToken(token: string): Promise<Tenant | undefined>;
   getUserBySessionToken(token: string): Promise<User | undefined>;
   listPlans(): Promise<Plan[]>;
+  updatePlan(slug: string, input: UpdatePlanInput): Promise<Plan>;
   listNumbers(tenantId: string): Promise<WaNumber[]>;
   createNumber(tenantId: string, label: string): Promise<WaNumber>;
   updateNumber(id: string, patch: Partial<WaNumber>): Promise<WaNumber>;

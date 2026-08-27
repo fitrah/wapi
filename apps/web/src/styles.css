@@ -477,7 +477,7 @@ em[data-status="disconnected"] {
 .planGrid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .plan {
@@ -512,6 +512,36 @@ em[data-status="disconnected"] {
   margin-top: 6px;
   min-height: 36px;
   width: 100%;
+}
+
+.packageEditor {
+  border-top: 1px solid #e3e8e1;
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
+.packageEditor label {
+  color: #66756b;
+  font-size: 12px;
+}
+
+.packageEditor input {
+  margin-top: 3px;
+  min-height: 34px;
+}
+
+.checkLine {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkLine input {
+  margin: 0;
+  min-height: auto;
+  width: auto;
 }
 
 .currentPackage {

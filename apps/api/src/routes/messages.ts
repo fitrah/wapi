@@ -39,12 +39,13 @@ messagesRouter.get("/", async (req, res) => {
 });
 
 messagesRouter.post("/retention/extend", async (req, res) => {
-  if (req.tenant!.plan !== "super" && req.tenant!.plan !== "ultra") {
-    res.status(403).json({ error: "Manual log extension is available for Super and Ultra packages" });
+  const plan = (await store.listPlans()).find((item) => item.slug === req.tenant!.plan);
+  if (!plan?.logRetentionExtendable) {
+    res.status(403).json({ error: "Manual log extension is not enabled for current package" });
     return;
   }
 
-  const result = await store.extendMessageRetention(req.tenant!.id, 30);
+  const result = await store.extendMessageRetention(req.tenant!.id, plan.logRetentionDays);
   res.json({ data: result });
 });
 

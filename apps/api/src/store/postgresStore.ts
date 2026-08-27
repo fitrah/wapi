@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
-import type { CreateMessageInput, Store } from "./store.js";
+import type { CreateMessageInput, Store, UpdatePlanInput } from "./store.js";
 
 const { Pool } = pg;
 const now = () => new Date().toISOString();
@@ -19,6 +19,8 @@ const plans: Plan[] = [
     attachmentEnabled: false,
     autoreplySpreadsheetEnabled: false,
     deviceNotificationEnabled: false,
+    logRetentionDays: 30,
+    logRetentionExtendable: false,
     features: ["Kirim personal", "Kirim group", "Pesan text", "Pesan schedule", "Pesan recurring", "Pesan template", "Webhook", "API"]
   },
   {
@@ -31,6 +33,8 @@ const plans: Plan[] = [
     attachmentEnabled: false,
     autoreplySpreadsheetEnabled: false,
     deviceNotificationEnabled: true,
+    logRetentionDays: 30,
+    logRetentionExtendable: false,
     features: ["Free features", "Remove watermark", "Device notification"]
   },
   {
@@ -43,6 +47,8 @@ const plans: Plan[] = [
     attachmentEnabled: false,
     autoreplySpreadsheetEnabled: true,
     deviceNotificationEnabled: true,
+    logRetentionDays: 30,
+    logRetentionExtendable: false,
     features: ["Lite features", "Autoreply spreadsheet", "2 agents"]
   },
   {
@@ -55,6 +61,8 @@ const plans: Plan[] = [
     attachmentEnabled: true,
     autoreplySpreadsheetEnabled: true,
     deviceNotificationEnabled: true,
+    logRetentionDays: 30,
+    logRetentionExtendable: true,
     features: ["Regular features", "Pesan attachment", "2 devices"]
   },
   {
@@ -67,6 +75,8 @@ const plans: Plan[] = [
     attachmentEnabled: true,
     autoreplySpreadsheetEnabled: true,
     deviceNotificationEnabled: true,
+    logRetentionDays: 30,
+    logRetentionExtendable: true,
     features: ["All features", "Unlimited messages", "4 devices", "4 agents"]
   }
 ];
@@ -134,6 +144,22 @@ function mapSession(row: Record<string, unknown>, token: string): Session {
     token,
     expiresAt: new Date(String(row.expires_at)).toISOString(),
     createdAt: new Date(String(row.created_at)).toISOString()
+  };
+}
+
+function mapPlan(row: Record<string, unknown>, fallback: Plan): Plan {
+  return {
+    ...fallback,
+    name: String(row.name),
+    monthlyPriceIdr: Number(row.monthly_price_idr),
+    monthlyMessageLimit: row.monthly_message_limit === null ? null : Number(row.monthly_message_limit),
+    maxNumbers: Number(row.max_numbers),
+    maxAgents: Number(row.max_agents),
+    attachmentEnabled: Boolean(row.attachment_enabled),
+    autoreplySpreadsheetEnabled: Boolean(row.autoreply_spreadsheet_enabled),
+    deviceNotificationEnabled: Boolean(row.device_notification_enabled),
+    logRetentionDays: Number(row.log_retention_days),
+    logRetentionExtendable: Boolean(row.log_retention_extendable)
   };
 }
 
@@ -212,6 +238,21 @@ export class PostgresStore implements Store {
         created_at timestamptz not null default now()
       );
 
+      create table if not exists package_settings (
+        slug text primary key,
+        name text not null,
+        monthly_price_idr integer not null,
+        monthly_message_limit integer,
+        max_numbers integer not null,
+        max_agents integer not null,
+        attachment_enabled boolean not null,
+        autoreply_spreadsheet_enabled boolean not null,
+        device_notification_enabled boolean not null,
+        log_retention_days integer not null,
+        log_retention_extendable boolean not null,
+        updated_at timestamptz not null default now()
+      );
+
       create index if not exists messages_tenant_created_idx on messages(tenant_id, created_at desc);
       create index if not exists whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);
       create index if not exists users_tenant_idx on users(tenant_id);
@@ -255,7 +296,7 @@ export class PostgresStore implements Store {
   }
 
   async updateTenantPackage(tenantId: string, planSlug: string) {
-    const plan = plans.find((item) => item.slug === planSlug);
+    const plan = (await this.listPlans()).find((item) => item.slug === planSlug);
     if (!plan) throw new Error("Package not found");
     const result = await this.pool.query(
       `update tenants
@@ -280,7 +321,8 @@ export class PostgresStore implements Store {
     const existing = await this.pool.query("select 1 from users where email = $1", [normalizedEmail]);
     if (existing.rows[0]) throw new Error("Email already registered");
 
-    const plan = plans.find((item) => item.slug === (input.plan ?? "free")) ?? plans[0]!;
+    const availablePlans = await this.listPlans();
+    const plan = availablePlans.find((item) => item.slug === (input.plan ?? "free")) ?? availablePlans[0]!;
     const client = await this.pool.connect();
     try {
       await client.query("begin");
@@ -352,7 +394,57 @@ export class PostgresStore implements Store {
   }
 
   async listPlans() {
-    return plans;
+    const result = await this.pool.query("select * from package_settings");
+    const overrides = new Map(result.rows.map((row) => [String(row.slug), row]));
+    return plans.map((plan) => {
+      const row = overrides.get(plan.slug);
+      return row ? mapPlan(row, plan) : plan;
+    });
+  }
+
+  async updatePlan(slug: string, input: UpdatePlanInput) {
+    const current = (await this.listPlans()).find((plan) => plan.slug === slug);
+    if (!current) throw new Error("Package not found");
+    const next: Plan = { ...current, ...input, slug };
+    await this.pool.query(
+      `insert into package_settings (
+         slug, name, monthly_price_idr, monthly_message_limit, max_numbers, max_agents,
+         attachment_enabled, autoreply_spreadsheet_enabled, device_notification_enabled,
+         log_retention_days, log_retention_extendable, updated_at
+       )
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+       on conflict (slug) do update
+       set name = excluded.name,
+           monthly_price_idr = excluded.monthly_price_idr,
+           monthly_message_limit = excluded.monthly_message_limit,
+           max_numbers = excluded.max_numbers,
+           max_agents = excluded.max_agents,
+           attachment_enabled = excluded.attachment_enabled,
+           autoreply_spreadsheet_enabled = excluded.autoreply_spreadsheet_enabled,
+           device_notification_enabled = excluded.device_notification_enabled,
+           log_retention_days = excluded.log_retention_days,
+           log_retention_extendable = excluded.log_retention_extendable,
+           updated_at = now()`,
+      [
+        next.slug,
+        next.name,
+        next.monthlyPriceIdr,
+        next.monthlyMessageLimit,
+        next.maxNumbers,
+        next.maxAgents,
+        next.attachmentEnabled,
+        next.autoreplySpreadsheetEnabled,
+        next.deviceNotificationEnabled,
+        next.logRetentionDays,
+        next.logRetentionExtendable
+      ]
+    );
+    await this.pool.query("update tenants set max_numbers = $2, daily_message_limit = $3 where plan = $1", [
+      next.slug,
+      next.maxNumbers,
+      next.monthlyMessageLimit ?? 0
+    ]);
+    return next;
   }
 
   async listNumbers(tenantId: string) {
@@ -394,9 +486,10 @@ export class PostgresStore implements Store {
   }
 
   async createMessage(input: CreateMessageInput) {
+    const expiresAt = input.expiresAt ?? new Date(Date.now() + (await this.getMessageRetentionDays(input.tenantId)) * 24 * 60 * 60 * 1000).toISOString();
     const result = await this.pool.query(
       `insert into messages (id, tenant_id, number_id, direction, recipient, sender, body, status, provider_message_id, error, sent_at, expires_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, coalesce($12::timestamptz, now() + interval '30 days'))
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::timestamptz)
        returning *`,
       [
         randomUUID(),
@@ -410,7 +503,7 @@ export class PostgresStore implements Store {
         input.providerMessageId ?? null,
         input.error ?? null,
         input.sentAt ?? null,
-        input.expiresAt ?? null
+        expiresAt
       ]
     );
     return mapMessage(result.rows[0]);
@@ -479,6 +572,12 @@ export class PostgresStore implements Store {
       count: Number(result.rows[0]?.count ?? 0),
       expiresAt: result.rows[0]?.expires_at ? new Date(String(result.rows[0].expires_at)).toISOString() : undefined
     };
+  }
+
+  private async getMessageRetentionDays(tenantId: string) {
+    const tenant = await this.getTenant(tenantId);
+    const plan = (await this.listPlans()).find((item) => item.slug === tenant?.plan);
+    return plan?.logRetentionDays ?? 30;
   }
 
   private async seedDemoTenant() {

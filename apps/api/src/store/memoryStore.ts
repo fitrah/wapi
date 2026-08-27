@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
-import type { CreateMessageInput, Store } from "./store.js";
+import type { CreateMessageInput, Store, UpdatePlanInput } from "./store.js";
 
 const now = () => new Date().toISOString();
 
@@ -22,6 +22,8 @@ export class MemoryStore implements Store {
       attachmentEnabled: false,
       autoreplySpreadsheetEnabled: false,
       deviceNotificationEnabled: false,
+      logRetentionDays: 30,
+      logRetentionExtendable: false,
       features: ["Text message", "Schedule", "Recurring", "Template", "Webhook", "API"]
     },
     {
@@ -34,6 +36,8 @@ export class MemoryStore implements Store {
       attachmentEnabled: false,
       autoreplySpreadsheetEnabled: false,
       deviceNotificationEnabled: true,
+      logRetentionDays: 30,
+      logRetentionExtendable: false,
       features: ["Text message", "Schedule", "Recurring", "Template", "Webhook", "API", "Remove watermark"]
     },
     {
@@ -46,6 +50,8 @@ export class MemoryStore implements Store {
       attachmentEnabled: false,
       autoreplySpreadsheetEnabled: true,
       deviceNotificationEnabled: true,
+      logRetentionDays: 30,
+      logRetentionExtendable: false,
       features: ["Text message", "Schedule", "Recurring", "Template", "Webhook", "API", "Autoreply spreadsheet"]
     },
     {
@@ -58,6 +64,8 @@ export class MemoryStore implements Store {
       attachmentEnabled: true,
       autoreplySpreadsheetEnabled: true,
       deviceNotificationEnabled: true,
+      logRetentionDays: 30,
+      logRetentionExtendable: true,
       features: ["All text features", "Attachment", "Autoreply spreadsheet", "Device notification"]
     },
     {
@@ -70,6 +78,8 @@ export class MemoryStore implements Store {
       attachmentEnabled: true,
       autoreplySpreadsheetEnabled: true,
       deviceNotificationEnabled: true,
+      logRetentionDays: 30,
+      logRetentionExtendable: true,
       features: ["Unlimited messages", "Attachment", "Autoreply spreadsheet", "Device notification"]
     }
   ];
@@ -215,6 +225,22 @@ export class MemoryStore implements Store {
     return this.plans;
   }
 
+  async updatePlan(slug: string, input: UpdatePlanInput) {
+    const index = this.plans.findIndex((plan) => plan.slug === slug);
+    if (index < 0) throw new Error("Package not found");
+    const next = { ...this.plans[index]!, ...input, slug };
+    this.plans[index] = next;
+    for (const [tenantId, tenant] of this.tenants.entries()) {
+      if (tenant.plan !== slug) continue;
+      this.tenants.set(tenantId, {
+        ...tenant,
+        maxNumbers: next.maxNumbers,
+        dailyMessageLimit: next.monthlyMessageLimit ?? 0
+      });
+    }
+    return next;
+  }
+
   async listNumbers(tenantId: string) {
     return [...this.numbers.values()].filter((number) => number.tenantId === tenantId);
   }
@@ -251,11 +277,14 @@ export class MemoryStore implements Store {
   }
 
   async createMessage(input: CreateMessageInput) {
+    const tenant = this.tenants.get(input.tenantId);
+    const plan = this.plans.find((item) => item.slug === tenant?.plan);
+    const retentionDays = plan?.logRetentionDays ?? 30;
     const message: MessageLog = {
       id: randomUUID(),
       createdAt: now(),
       ...input,
-      expiresAt: input.expiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      expiresAt: input.expiresAt ?? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000).toISOString()
     };
     this.messages.set(message.id, message);
     return message;
