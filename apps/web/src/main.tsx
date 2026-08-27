@@ -134,7 +134,8 @@ function App() {
 
   async function addNumber() {
     if (!label.trim()) return;
-    await api("/api/numbers", { method: "POST", body: JSON.stringify({ label }) });
+    const created = await api<WaNumber>("/api/numbers", { method: "POST", body: JSON.stringify({ label }) });
+    setSelectedNumberId(created.id);
     setLabel("");
     setNotice("Nomor baru dibuat.");
     await refresh();
