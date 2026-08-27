@@ -291,7 +291,7 @@ function App() {
           <button className={activeView === "numbers" ? "active" : ""} onClick={() => setActiveView("numbers")}><Smartphone size={17} /> Numbers</button>
           <button className={activeView === "messages" ? "active" : ""} onClick={() => setActiveView("messages")}><Send size={17} /> Messages</button>
           <button className={activeView === "packages" ? "active" : ""} onClick={() => setActiveView("packages")}><KeyRound size={17} /> Packages</button>
-          <button className={activeView === "api" ? "active" : ""} onClick={() => setActiveView("api")}><KeyRound size={17} /> API Keys</button>
+          <button className={activeView === "api" ? "active" : ""} onClick={() => setActiveView("api")}><KeyRound size={17} /> API Docs</button>
         </nav>
       </aside>
 
@@ -432,22 +432,44 @@ function App() {
 
         {activeView === "api" && <section className="panel tablePanel">
           <div className="panelHeader">
-            <h2>API Keys</h2>
+            <h2>API Docs</h2>
             <KeyRound size={18} />
           </div>
           <div className="apiGuide">
             <div>
-              <strong>Dashboard session</strong>
-              <p>Dashboard menggunakan session token dari login/register, jadi browser tidak lagi menyimpan demo API key.</p>
+              <strong>Authentication</strong>
+              <p>Integrasi server gunakan header <code>x-api-key</code>. Dashboard memakai session token login, tapi API publik untuk integrasi tetap pakai API key tenant.</p>
             </div>
             <div>
-              <strong>Integration header</strong>
-              <p>Integrasi server tetap memakai header <code>x-api-key</code>. Secret key hanya ditampilkan saat workspace/API key dibuat supaya tidak bocor di dashboard.</p>
+              <strong>Send Message</strong>
+              <p><code>POST /api/messages/send-text</code> mengirim pesan lewat nomor Wapi yang sudah connected. Response awal berstatus queued dan worker akan memproses pengiriman.</p>
             </div>
             <pre>{`curl -X POST https://wapi.proyek.org/api/messages/send-text \\
   -H "x-api-key: wapi_xxx" \\
   -H "content-type: application/json" \\
   -d '{"numberId":"...","recipient":"62812...","body":"Halo"}'`}</pre>
+            <div>
+              <strong>Get Messages</strong>
+              <p><code>GET /api/messages</code> mengambil message log inbound dan outbound yang belum expired. Bisa difilter dengan <code>direction</code>, <code>status</code>, <code>numberId</code>, dan <code>q</code>.</p>
+            </div>
+            <pre>{`curl "https://wapi.proyek.org/api/messages?direction=inbound&status=received&q=halo" \\
+  -H "x-api-key: wapi_xxx"`}
+            </pre>
+            <div>
+              <strong>Message Fields</strong>
+              <p>Field penting: <code>direction</code>, <code>sender</code>, <code>recipient</code>, <code>body</code>, <code>status</code>, <code>createdAt</code>, dan <code>expiresAt</code>.</p>
+            </div>
+            <pre>{`{
+  "data": [
+    {
+      "direction": "inbound",
+      "sender": "62812...",
+      "body": "Halo",
+      "status": "received",
+      "expiresAt": "2026-09-26T..."
+    }
+  ]
+}`}</pre>
           </div>
         </section>}
 
