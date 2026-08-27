@@ -1,7 +1,8 @@
-import type { ConnectResult, WaNumber } from "../types.js";
+import type { ConnectResult, MessageLog, WaNumber } from "../types.js";
 
 export type WhatsAppDriverEvents = {
   onNumberStatusChange?: (number: WaNumber, meta?: { reason?: string; reconnectRequired?: boolean }) => void | Promise<void>;
+  onInboundMessage?: (message: Omit<MessageLog, "id" | "createdAt">) => void | Promise<void>;
 };
 
 export interface WhatsAppDriver {

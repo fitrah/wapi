@@ -22,8 +22,25 @@ const driver = createWhatsAppDriver({
       number: updated,
       reason: meta.reason ?? "session-disconnected"
     });
+  },
+  async onInboundMessage(message) {
+    await store.createMessage(message);
   }
 });
+
+async function restoreWhatsAppSessions() {
+  try {
+    const tenants = await store.listTenants();
+    const tenantNumbers = await Promise.all(tenants.map((tenant) => store.listNumbers(tenant.id)));
+    const restorable = tenantNumbers.flat().filter((number) => number.status === "connected" || number.status === "connecting");
+    await Promise.all(restorable.map((number) => driver.connect(number)));
+    if (restorable.length) console.log(`Restored ${restorable.length} WhatsApp session(s)`);
+  } catch (error) {
+    console.error("WhatsApp session restore failed", error);
+  }
+}
+
+void restoreWhatsAppSessions();
 
 numbersRouter.use(requireTenant);
 

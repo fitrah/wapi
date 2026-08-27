@@ -42,6 +42,7 @@ type MessageLog = {
   numberId: string;
   direction: "inbound" | "outbound";
   recipient?: string;
+  sender?: string;
   body: string;
   status: "queued" | "sent" | "failed" | "received";
   error?: string;
@@ -335,7 +336,7 @@ function App() {
             {messages.map((message) => (
               <div className="row" key={message.id}>
                 <span>{message.direction}</span>
-                <strong>{message.recipient ?? "-"}</strong>
+                <strong>{message.direction === "inbound" ? message.sender ?? "-" : message.recipient ?? "-"}</strong>
                 <p>{message.body}</p>
                 <em data-status={message.status}>{message.status}</em>
               </div>

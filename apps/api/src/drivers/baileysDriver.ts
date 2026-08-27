@@ -1,6 +1,6 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, { Browsers, DisconnectReason, fetchLatestBaileysVersion, useMultiFileAuthState, type WAMessage, type WASocket } from "@whiskeysockets/baileys";
 import P from "pino";
 import QRCode from "qrcode";
 import type { ConnectResult, WaNumber } from "../types.js";
@@ -20,6 +20,24 @@ export class BaileysDriver implements WhatsAppDriver {
     const id = socket.user?.id;
     const phone = id?.split("@")[0]?.split(":")[0]?.replace(/\D/g, "");
     return phone || fallback;
+  }
+
+  private getPhoneFromJid(jid?: string | null) {
+    return jid?.split("@")[0]?.split(":")[0]?.replace(/\D/g, "");
+  }
+
+  private getMessageBody(message: WAMessage) {
+    const content = message.message?.ephemeralMessage?.message ?? message.message?.viewOnceMessage?.message ?? message.message;
+    const body =
+      content?.conversation ??
+      content?.extendedTextMessage?.text ??
+      content?.imageMessage?.caption ??
+      content?.videoMessage?.caption ??
+      content?.documentMessage?.caption ??
+      content?.buttonsResponseMessage?.selectedDisplayText ??
+      content?.listResponseMessage?.title ??
+      content?.templateButtonReplyMessage?.selectedDisplayText;
+    return body?.trim() || "[non-text message]";
   }
 
   async connect(number: WaNumber): Promise<ConnectResult> {
@@ -61,6 +79,24 @@ export class BaileysDriver implements WhatsAppDriver {
         });
         this.sockets.set(number.id, socket);
         socket.ev.on("creds.update", saveCreds);
+
+        socket.ev.on("messages.upsert", async (update) => {
+          if (this.socketRuns.get(number.id) !== runId || update.type !== "notify") return;
+          for (const message of update.messages) {
+            if (message.key.fromMe || !message.key.remoteJid) continue;
+            const sender = this.getPhoneFromJid(message.key.participant ?? message.key.remoteJid);
+            await this.events.onInboundMessage?.({
+              tenantId: number.tenantId,
+              numberId: number.id,
+              direction: "inbound",
+              sender,
+              recipient: number.phone,
+              body: this.getMessageBody(message),
+              status: "received",
+              providerMessageId: message.key.id ?? undefined
+            });
+          }
+        });
 
         socket.ev.on("connection.update", async (update) => {
           if (this.socketRuns.get(number.id) !== runId) return;
