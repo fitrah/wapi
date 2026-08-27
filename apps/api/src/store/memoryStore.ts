@@ -159,6 +159,14 @@ export class MemoryStore implements Store {
     return next;
   }
 
+  async rotateTenantApiKey(tenantId: string) {
+    const tenant = this.tenants.get(tenantId);
+    if (!tenant) throw new Error("Tenant not found");
+    const next = { ...tenant, apiKey: `wapi_${randomUUID().replaceAll("-", "")}` };
+    this.tenants.set(tenantId, next);
+    return next;
+  }
+
   async createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

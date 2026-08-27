@@ -309,6 +309,19 @@ export class PostgresStore implements Store {
     return mapTenant(result.rows[0]);
   }
 
+  async rotateTenantApiKey(tenantId: string) {
+    const apiKey = `wapi_${randomUUID().replaceAll("-", "")}`;
+    const result = await this.pool.query(
+      `update tenants
+       set api_key_hash = $2
+       where id = $1
+       returning *`,
+      [tenantId, hashApiKey(apiKey)]
+    );
+    if (!result.rows[0]) throw new Error("Tenant not found");
+    return mapTenant(result.rows[0], apiKey);
+  }
+
   async createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

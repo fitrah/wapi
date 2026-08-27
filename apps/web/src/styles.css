@@ -572,6 +572,17 @@ em[data-status="disconnected"] {
   overflow: auto;
 }
 
+.apiKeyBox {
+  display: grid;
+  gap: 10px;
+}
+
+.apiKeyBox code {
+  display: block;
+  overflow: auto;
+  white-space: nowrap;
+}
+
 .table {
   display: grid;
   gap: 8px;

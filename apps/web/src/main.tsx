@@ -135,6 +135,7 @@ function App() {
   const [messageNumberId, setMessageNumberId] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
   const [extendingLogs, setExtendingLogs] = useState(false);
+  const [generatedApiKey, setGeneratedApiKey] = useState("");
   const [notice, setNotice] = useState("");
 
   const activeTenant = tenants[0];
@@ -272,6 +273,12 @@ function App() {
     } finally {
       setExtendingLogs(false);
     }
+  }
+
+  async function generateApiKey() {
+    const result = await api<{ apiKey: string }>("/api/auth/me/api-key", { method: "POST" });
+    setGeneratedApiKey(result.apiKey);
+    setNotice("API key baru dibuat. Simpan sekarang karena hanya tampil sekali.");
   }
 
   if (!token) return <AuthScreen onAuth={handleAuth} />;
@@ -439,6 +446,12 @@ function App() {
             <div>
               <strong>Authentication</strong>
               <p>Integrasi server gunakan header <code>x-api-key</code>. Dashboard memakai session token login, tapi API publik untuk integrasi tetap pakai API key tenant.</p>
+            </div>
+            <div className="apiKeyBox">
+              <strong>Generate API Key</strong>
+              <p>Generate akan membuat key baru dan key lama otomatis tidak berlaku. Plaintext key hanya tampil sekali setelah tombol ditekan.</p>
+              <button className="smallAction" onClick={() => generateApiKey().catch((error) => setNotice(error.message))}>Generate API Key</button>
+              {generatedApiKey && <code>{generatedApiKey}</code>}
             </div>
             <div>
               <strong>Send Message</strong>

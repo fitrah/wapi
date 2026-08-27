@@ -25,6 +25,7 @@ export interface Store {
   listTenants(): Promise<Tenant[]>;
   createTenant(input: Pick<Tenant, "name" | "plan" | "maxNumbers" | "dailyMessageLimit" | "notificationEmail">): Promise<Tenant>;
   updateTenantPackage(tenantId: string, planSlug: string): Promise<Tenant>;
+  rotateTenantApiKey(tenantId: string): Promise<Tenant>;
   createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

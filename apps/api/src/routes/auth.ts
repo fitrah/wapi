@@ -116,3 +116,24 @@ authRouter.patch("/me/package", async (req, res) => {
   const updated = await store.updateTenantPackage(tenant.id, plan.slug);
   res.json({ data: { tenant: updated, plan } });
 });
+
+authRouter.post("/me/api-key", async (req, res) => {
+  const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) {
+    res.status(401).json({ error: "Missing session token" });
+    return;
+  }
+
+  const [tenant, user] = await Promise.all([store.getTenantBySessionToken(token), store.getUserBySessionToken(token)]);
+  if (!tenant || !user) {
+    res.status(401).json({ error: "Invalid session token" });
+    return;
+  }
+  if (user.role === "agent") {
+    res.status(403).json({ error: "Only owner or admin can generate API key" });
+    return;
+  }
+
+  const updated = await store.rotateTenantApiKey(tenant.id);
+  res.json({ data: { apiKey: updated.apiKey } });
+});
