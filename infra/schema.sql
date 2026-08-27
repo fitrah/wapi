@@ -32,7 +32,8 @@ create table messages (
   provider_message_id text,
   error text,
   created_at timestamptz not null default now(),
-  sent_at timestamptz
+  sent_at timestamptz,
+  expires_at timestamptz not null default (now() + interval '30 days')
 );
 
 create table webhooks (
@@ -64,6 +65,7 @@ create table auth_sessions (
 );
 
 create index messages_tenant_created_idx on messages(tenant_id, created_at desc);
+create index messages_expires_at_idx on messages(expires_at);
 create index whatsapp_numbers_tenant_idx on whatsapp_numbers(tenant_id);
 create index users_tenant_idx on users(tenant_id);
 create index auth_sessions_token_idx on auth_sessions(token_hash);

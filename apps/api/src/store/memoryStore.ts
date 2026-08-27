@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
-import type { Store } from "./store.js";
+import type { CreateMessageInput, Store } from "./store.js";
 
 const now = () => new Date().toISOString();
 
@@ -250,11 +250,12 @@ export class MemoryStore implements Store {
     return number?.tenantId === tenantId ? number : undefined;
   }
 
-  async createMessage(input: Omit<MessageLog, "id" | "createdAt">) {
+  async createMessage(input: CreateMessageInput) {
     const message: MessageLog = {
       id: randomUUID(),
       createdAt: now(),
-      ...input
+      ...input,
+      expiresAt: input.expiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     };
     this.messages.set(message.id, message);
     return message;
@@ -269,14 +270,15 @@ export class MemoryStore implements Store {
   }
 
   async listMessages(tenantId: string) {
+    const current = now();
     return [...this.messages.values()]
-      .filter((message) => message.tenantId === tenantId)
+      .filter((message) => message.tenantId === tenantId && (!message.expiresAt || message.expiresAt > current))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   async listQueuedOutboundMessages(limit: number) {
     return [...this.messages.values()]
-      .filter((message) => message.direction === "outbound" && message.status === "queued")
+      .filter((message) => message.direction === "outbound" && message.status === "queued" && (!message.expiresAt || message.expiresAt > now()))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .slice(0, limit);
   }
@@ -286,5 +288,32 @@ export class MemoryStore implements Store {
     return [...this.messages.values()].filter(
       (message) => message.tenantId === tenantId && message.direction === "outbound" && message.createdAt.startsWith(month)
     ).length;
+  }
+
+  async deleteExpiredMessages() {
+    const current = now();
+    let deleted = 0;
+    for (const [id, message] of this.messages.entries()) {
+      if (message.expiresAt && message.expiresAt <= current) {
+        this.messages.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
+  async extendMessageRetention(tenantId: string, days: number) {
+    const current = now();
+    let count = 0;
+    let latest: string | undefined;
+    for (const [id, message] of this.messages.entries()) {
+      if (message.tenantId !== tenantId || (message.expiresAt && message.expiresAt <= current)) continue;
+      const base = new Date(message.expiresAt && message.expiresAt > current ? message.expiresAt : current);
+      const expiresAt = new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+      this.messages.set(id, { ...message, expiresAt });
+      latest = !latest || expiresAt > latest ? expiresAt : latest;
+      count += 1;
+    }
+    return { count, expiresAt: latest };
   }
 }

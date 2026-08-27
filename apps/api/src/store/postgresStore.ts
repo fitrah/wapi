@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
-import type { Store } from "./store.js";
+import type { CreateMessageInput, Store } from "./store.js";
 
 const { Pool } = pg;
 const now = () => new Date().toISOString();
@@ -110,7 +110,8 @@ function mapMessage(row: Record<string, unknown>): MessageLog {
     providerMessageId: row.provider_message_id ? String(row.provider_message_id) : undefined,
     error: row.error ? String(row.error) : undefined,
     createdAt: new Date(String(row.created_at)).toISOString(),
-    sentAt: row.sent_at ? new Date(String(row.sent_at)).toISOString() : undefined
+    sentAt: row.sent_at ? new Date(String(row.sent_at)).toISOString() : undefined,
+    expiresAt: row.expires_at ? new Date(String(row.expires_at)).toISOString() : undefined
   };
 }
 
@@ -179,7 +180,8 @@ export class PostgresStore implements Store {
         provider_message_id text,
         error text,
         created_at timestamptz not null default now(),
-        sent_at timestamptz
+        sent_at timestamptz,
+        expires_at timestamptz not null default (now() + interval '30 days')
       );
 
       create table if not exists webhooks (
@@ -215,6 +217,11 @@ export class PostgresStore implements Store {
       create index if not exists users_tenant_idx on users(tenant_id);
       create index if not exists auth_sessions_token_idx on auth_sessions(token_hash);
     `);
+    await this.pool.query("alter table messages add column if not exists expires_at timestamptz");
+    await this.pool.query("update messages set expires_at = created_at + interval '30 days' where expires_at is null");
+    await this.pool.query("alter table messages alter column expires_at set not null");
+    await this.pool.query("alter table messages alter column expires_at set default (now() + interval '30 days')");
+    await this.pool.query("create index if not exists messages_expires_at_idx on messages(expires_at)");
 
     await this.seedDemoTenant();
   }
@@ -386,10 +393,10 @@ export class PostgresStore implements Store {
     return result.rows[0] ? mapNumber(result.rows[0]) : undefined;
   }
 
-  async createMessage(input: Omit<MessageLog, "id" | "createdAt">) {
+  async createMessage(input: CreateMessageInput) {
     const result = await this.pool.query(
-      `insert into messages (id, tenant_id, number_id, direction, recipient, sender, body, status, provider_message_id, error, sent_at)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `insert into messages (id, tenant_id, number_id, direction, recipient, sender, body, status, provider_message_id, error, sent_at, expires_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, coalesce($12::timestamptz, now() + interval '30 days'))
        returning *`,
       [
         randomUUID(),
@@ -402,7 +409,8 @@ export class PostgresStore implements Store {
         input.status,
         input.providerMessageId ?? null,
         input.error ?? null,
-        input.sentAt ?? null
+        input.sentAt ?? null,
+        input.expiresAt ?? null
       ]
     );
     return mapMessage(result.rows[0]);
@@ -423,7 +431,7 @@ export class PostgresStore implements Store {
   }
 
   async listMessages(tenantId: string) {
-    const result = await this.pool.query("select * from messages where tenant_id = $1 order by created_at desc limit 200", [tenantId]);
+    const result = await this.pool.query("select * from messages where tenant_id = $1 and expires_at > now() order by created_at desc limit 200", [tenantId]);
     return result.rows.map(mapMessage);
   }
 
@@ -431,7 +439,7 @@ export class PostgresStore implements Store {
     const result = await this.pool.query(
       `select *
        from messages
-       where direction = 'outbound' and status = 'queued'
+       where direction = 'outbound' and status = 'queued' and expires_at > now()
        order by created_at asc
        limit $1`,
       [limit]
@@ -449,6 +457,28 @@ export class PostgresStore implements Store {
       [tenantId]
     );
     return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async deleteExpiredMessages() {
+    const result = await this.pool.query("delete from messages where expires_at <= now()");
+    return result.rowCount ?? 0;
+  }
+
+  async extendMessageRetention(tenantId: string, days: number) {
+    const result = await this.pool.query(
+      `with updated as (
+         update messages
+         set expires_at = greatest(expires_at, now()) + ($2 * interval '1 day')
+         where tenant_id = $1 and expires_at > now()
+         returning expires_at
+       )
+       select count(*)::int as count, max(expires_at) as expires_at from updated`,
+      [tenantId, days]
+    );
+    return {
+      count: Number(result.rows[0]?.count ?? 0),
+      expiresAt: result.rows[0]?.expires_at ? new Date(String(result.rows[0].expires_at)).toISOString() : undefined
+    };
   }
 
   private async seedDemoTenant() {

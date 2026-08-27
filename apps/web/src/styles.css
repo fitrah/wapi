@@ -355,6 +355,12 @@ code {
   margin: 0;
 }
 
+.smallAction {
+  font-size: 13px;
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
 .addRow {
   display: grid;
   gap: 8px;
@@ -540,6 +546,13 @@ em[data-status="disconnected"] {
   gap: 8px;
 }
 
+.messageFilters {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) minmax(180px, 1.4fr);
+  margin-bottom: 12px;
+}
+
 .row {
   align-items: center;
   background: #fbfcfa;
@@ -612,6 +625,10 @@ em[data-status="disconnected"] {
   .topActions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .messageFilters {
+    grid-template-columns: 1fr;
   }
 
   .row {

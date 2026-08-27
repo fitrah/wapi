@@ -64,6 +64,7 @@ export type MessageLog = {
   error?: string;
   createdAt: string;
   sentAt?: string;
+  expiresAt?: string;
 };
 
 export type ConnectResult = {

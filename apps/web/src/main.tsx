@@ -47,6 +47,7 @@ type MessageLog = {
   status: "queued" | "sent" | "failed" | "received";
   error?: string;
   createdAt: string;
+  expiresAt?: string;
 };
 
 const apiBase = import.meta.env.VITE_API_BASE ?? "";
@@ -86,6 +87,11 @@ function App() {
   const [recipient, setRecipient] = useState("6281234567890");
   const [body, setBody] = useState("Halo, ini test dari Wapi.");
   const [selectedNumberId, setSelectedNumberId] = useState("");
+  const [messageDirection, setMessageDirection] = useState<"all" | "inbound" | "outbound">("all");
+  const [messageStatus, setMessageStatus] = useState<"all" | "queued" | "sent" | "failed" | "received">("all");
+  const [messageNumberId, setMessageNumberId] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
+  const [extendingLogs, setExtendingLogs] = useState(false);
   const [notice, setNotice] = useState("");
 
   const activeTenant = tenants[0];
@@ -95,11 +101,17 @@ function App() {
   );
 
   async function refresh() {
+    const messageParams = new URLSearchParams();
+    if (messageDirection !== "all") messageParams.set("direction", messageDirection);
+    if (messageStatus !== "all") messageParams.set("status", messageStatus);
+    if (messageNumberId) messageParams.set("numberId", messageNumberId);
+    if (messageSearch.trim()) messageParams.set("q", messageSearch.trim());
+    const messagePath = `/api/messages${messageParams.size ? `?${messageParams.toString()}` : ""}`;
     const [meRes, planRes, numberRes, messageRes] = await Promise.all([
       api<{ tenant: Tenant; user: User }>("/api/auth/me"),
       api<Plan[]>("/api/admin/plans"),
       api<WaNumber[]>("/api/numbers"),
-      api<MessageLog[]>("/api/messages")
+      api<MessageLog[]>(messagePath)
     ]);
     setTenants([meRes.tenant]);
     setUser(meRes.user);
@@ -111,7 +123,7 @@ function App() {
 
   useEffect(() => {
     if (token) refresh().catch((error) => setNotice(error.message));
-  }, [token]);
+  }, [token, messageDirection, messageStatus, messageNumberId]);
 
   function handleAuth(nextToken: string) {
     localStorage.setItem("wapi_session", nextToken);
@@ -167,6 +179,19 @@ function App() {
       setNotice(error instanceof Error ? error.message : "Package update failed.");
     } finally {
       setUpdatingPlan("");
+    }
+  }
+
+  async function extendMessageRetention() {
+    setExtendingLogs(true);
+    try {
+      const result = await api<{ count: number; expiresAt?: string }>("/api/messages/retention/extend", { method: "POST" });
+      setNotice(`Retention diperpanjang 30 hari untuk ${result.count} message log.`);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Retention update failed.");
+    } finally {
+      setExtendingLogs(false);
     }
   }
 
@@ -330,7 +355,37 @@ function App() {
         {(activeView === "overview" || activeView === "messages") && <section className="panel tablePanel">
           <div className="panelHeader">
             <h2>Message Log</h2>
-            <MessageSquareText size={18} />
+            {(activeTenant?.plan === "super" || activeTenant?.plan === "ultra") ? (
+              <button className="smallAction" disabled={extendingLogs} onClick={extendMessageRetention}>
+                {extendingLogs ? "Extending..." : "+30 days"}
+              </button>
+            ) : <MessageSquareText size={18} />}
+          </div>
+          <div className="messageFilters">
+            <select value={messageDirection} onChange={(event) => setMessageDirection(event.target.value as typeof messageDirection)}>
+              <option value="all">All directions</option>
+              <option value="inbound">Inbound</option>
+              <option value="outbound">Outbound</option>
+            </select>
+            <select value={messageStatus} onChange={(event) => setMessageStatus(event.target.value as typeof messageStatus)}>
+              <option value="all">All status</option>
+              <option value="received">Received</option>
+              <option value="sent">Sent</option>
+              <option value="queued">Queued</option>
+              <option value="failed">Failed</option>
+            </select>
+            <select value={messageNumberId} onChange={(event) => setMessageNumberId(event.target.value)}>
+              <option value="">All numbers</option>
+              {numbers.map((number) => <option key={number.id} value={number.id}>{number.label}</option>)}
+            </select>
+            <input
+              value={messageSearch}
+              onChange={(event) => setMessageSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") refresh().catch((error) => setNotice(error.message));
+              }}
+              placeholder="Search sender, recipient, message"
+            />
           </div>
           <div className="table">
             {messages.map((message) => (

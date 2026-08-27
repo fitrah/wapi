@@ -9,11 +9,43 @@ const sendSchema = z.object({
   body: z.string().min(1).max(4096)
 });
 
+const listQuerySchema = z.object({
+  direction: z.enum(["all", "inbound", "outbound"]).default("all"),
+  status: z.enum(["all", "queued", "sent", "failed", "received"]).default("all"),
+  numberId: z.string().optional(),
+  q: z.string().optional()
+});
+
 export const messagesRouter = Router();
 messagesRouter.use(requireTenant);
 
 messagesRouter.get("/", async (req, res) => {
-  res.json({ data: await store.listMessages(req.tenant!.id) });
+  const parsed = listQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const query = parsed.data;
+  const search = query.q?.trim().toLowerCase();
+  const messages = (await store.listMessages(req.tenant!.id)).filter((message) => {
+    if (query.direction !== "all" && message.direction !== query.direction) return false;
+    if (query.status !== "all" && message.status !== query.status) return false;
+    if (query.numberId && message.numberId !== query.numberId) return false;
+    if (!search) return true;
+    return [message.sender, message.recipient, message.body, message.error].some((value) => value?.toLowerCase().includes(search));
+  });
+  res.json({ data: messages });
+});
+
+messagesRouter.post("/retention/extend", async (req, res) => {
+  if (req.tenant!.plan !== "super" && req.tenant!.plan !== "ultra") {
+    res.status(403).json({ error: "Manual log extension is available for Super and Ultra packages" });
+    return;
+  }
+
+  const result = await store.extendMessageRetention(req.tenant!.id, 30);
+  res.json({ data: result });
 });
 
 messagesRouter.post("/send-text", async (req, res) => {

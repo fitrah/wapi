@@ -1,5 +1,8 @@
 import type { MessageLog, Plan, Session, Tenant, User, WaNumber } from "../types.js";
 
+export type CreateMessageInput = Omit<MessageLog, "id" | "createdAt" | "expiresAt"> & { expiresAt?: string };
+export type RetentionExtension = { count: number; expiresAt?: string };
+
 export interface Store {
   init?(): Promise<void>;
   getTenantByApiKey(apiKey: string): Promise<Tenant | undefined>;
@@ -23,9 +26,11 @@ export interface Store {
   createNumber(tenantId: string, label: string): Promise<WaNumber>;
   updateNumber(id: string, patch: Partial<WaNumber>): Promise<WaNumber>;
   getNumber(tenantId: string, numberId: string): Promise<WaNumber | undefined>;
-  createMessage(input: Omit<MessageLog, "id" | "createdAt">): Promise<MessageLog>;
+  createMessage(input: CreateMessageInput): Promise<MessageLog>;
   updateMessage(id: string, patch: Partial<MessageLog>): Promise<MessageLog>;
   listMessages(tenantId: string): Promise<MessageLog[]>;
   listQueuedOutboundMessages(limit: number): Promise<MessageLog[]>;
   countOutboundMessagesThisMonth(tenantId: string): Promise<number>;
+  deleteExpiredMessages(): Promise<number>;
+  extendMessageRetention(tenantId: string, days: number): Promise<RetentionExtension>;
 }
