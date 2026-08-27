@@ -80,6 +80,10 @@ function logRetentionText(plan?: Pick<Plan, "logRetentionDays" | "logRetentionEx
   return plan?.logRetentionExtendable ? `${days} days + manual extend` : `${days} days`;
 }
 
+function monthlyMessageText(plan: Pick<Plan, "monthlyMessageLimit">) {
+  return plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited pesan";
+}
+
 function toPlanDraft(plan: Plan): PlanDraft {
   return {
     name: plan.name,
@@ -407,7 +411,7 @@ function App() {
               <div className={activeTenant?.plan === plan.slug ? "plan activePlan" : "plan"} key={plan.slug}>
                 <strong>{plan.name}</strong>
                 <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}</span>
-                <p>{plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited messages"}</p>
+                <p>{monthlyMessageText(plan)}</p>
                 <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
                 <small>Log {logRetentionText(plan)}</small>
                 {user?.isPlatformAdmin && planDrafts[plan.slug] && (
@@ -618,6 +622,9 @@ function AuthScreen({ onAuth }: { onAuth: (token: string) => void }) {
             >
               <strong>{plan.name}</strong>
               <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}` : "Free"}</span>
+              <p>{monthlyMessageText(plan)}</p>
+              <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
+              <small>Log {logRetentionText(plan)}</small>
             </button>
           ))}
         </div>

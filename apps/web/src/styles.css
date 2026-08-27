@@ -283,21 +283,30 @@ code {
 
 .landingPlans {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  max-width: 720px;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  max-width: 880px;
 }
 
 .landingPlan {
   align-items: start;
   display: grid;
-  gap: 4px;
-  min-height: 74px;
+  gap: 5px;
+  min-height: 150px;
+  text-align: left;
 }
 
 .landingPlan span {
   color: #1e7b49;
   font-size: 13px;
+}
+
+.landingPlan p,
+.landingPlan small {
+  color: #66756b;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 0;
 }
 
 .selectedLandingPlan {
