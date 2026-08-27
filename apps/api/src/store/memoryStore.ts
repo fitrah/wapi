@@ -134,6 +134,21 @@ export class MemoryStore implements Store {
     return tenant;
   }
 
+  async updateTenantPackage(tenantId: string, planSlug: string) {
+    const tenant = this.tenants.get(tenantId);
+    if (!tenant) throw new Error("Tenant not found");
+    const plan = this.plans.find((item) => item.slug === planSlug);
+    if (!plan) throw new Error("Package not found");
+    const next: Tenant = {
+      ...tenant,
+      plan: plan.slug,
+      maxNumbers: plan.maxNumbers,
+      dailyMessageLimit: plan.monthlyMessageLimit ?? 0
+    };
+    this.tenants.set(tenantId, next);
+    return next;
+  }
+
   async createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

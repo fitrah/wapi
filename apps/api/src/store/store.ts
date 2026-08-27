@@ -6,6 +6,7 @@ export interface Store {
   getTenant(id: string): Promise<Tenant | undefined>;
   listTenants(): Promise<Tenant[]>;
   createTenant(input: Pick<Tenant, "name" | "plan" | "maxNumbers" | "dailyMessageLimit" | "notificationEmail">): Promise<Tenant>;
+  updateTenantPackage(tenantId: string, planSlug: string): Promise<Tenant>;
   createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

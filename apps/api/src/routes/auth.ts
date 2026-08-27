@@ -16,6 +16,10 @@ const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const updatePackageSchema = z.object({
+  plan: z.string().min(1)
+});
+
 export const authRouter = Router();
 
 authRouter.post("/register", async (req, res) => {
@@ -60,4 +64,47 @@ authRouter.get("/me", async (req, res) => {
     return;
   }
   res.json({ data: { tenant, user } });
+});
+
+authRouter.patch("/me/package", async (req, res) => {
+  const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!token) {
+    res.status(401).json({ error: "Missing session token" });
+    return;
+  }
+
+  const parsed = updatePackageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const [tenant, user, plans] = await Promise.all([
+    store.getTenantBySessionToken(token),
+    store.getUserBySessionToken(token),
+    store.listPlans()
+  ]);
+  if (!tenant || !user) {
+    res.status(401).json({ error: "Invalid session token" });
+    return;
+  }
+  if (user.role === "agent") {
+    res.status(403).json({ error: "Only owner or admin can update package" });
+    return;
+  }
+
+  const plan = plans.find((item) => item.slug === parsed.data.plan);
+  if (!plan) {
+    res.status(404).json({ error: "Package not found" });
+    return;
+  }
+
+  const numbers = await store.listNumbers(tenant.id);
+  if (numbers.length > plan.maxNumbers) {
+    res.status(422).json({ error: `Cannot switch to ${plan.name}: current account has ${numbers.length} numbers, package allows ${plan.maxNumbers}` });
+    return;
+  }
+
+  const updated = await store.updateTenantPackage(tenant.id, plan.slug);
+  res.json({ data: { tenant: updated, plan } });
 });

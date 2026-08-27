@@ -247,6 +247,20 @@ export class PostgresStore implements Store {
     return mapTenant(result.rows[0], apiKey);
   }
 
+  async updateTenantPackage(tenantId: string, planSlug: string) {
+    const plan = plans.find((item) => item.slug === planSlug);
+    if (!plan) throw new Error("Package not found");
+    const result = await this.pool.query(
+      `update tenants
+       set plan = $2, max_numbers = $3, daily_message_limit = $4
+       where id = $1
+       returning *`,
+      [tenantId, plan.slug, plan.maxNumbers, plan.monthlyMessageLimit ?? 0]
+    );
+    if (!result.rows[0]) throw new Error("Tenant not found");
+    return mapTenant(result.rows[0]);
+  }
+
   async createTenantAccount(input: {
     tenantName: string;
     ownerName: string;

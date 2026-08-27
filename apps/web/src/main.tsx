@@ -80,6 +80,7 @@ function App() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [activeView, setActiveView] = useState<View>("overview");
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [updatingPlan, setUpdatingPlan] = useState("");
   const [label, setLabel] = useState("");
   const [recipient, setRecipient] = useState("6281234567890");
   const [body, setBody] = useState("Halo, ini test dari Wapi.");
@@ -149,6 +150,23 @@ function App() {
     });
     setNotice("Pesan masuk queue dan diproses worker.");
     await refresh();
+  }
+
+  async function updatePackage(planSlug: string) {
+    setUpdatingPlan(planSlug);
+    try {
+      const result = await api<{ tenant: Tenant; plan: Plan }>("/api/auth/me/package", {
+        method: "PATCH",
+        body: JSON.stringify({ plan: planSlug })
+      });
+      setTenants([result.tenant]);
+      setNotice(`Package diupdate ke ${result.plan.name}.`);
+      await refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Package update failed.");
+    } finally {
+      setUpdatingPlan("");
+    }
   }
 
   if (!token) return <AuthScreen onAuth={handleAuth} />;
@@ -270,11 +288,18 @@ function App() {
           </div>
           <div className="planGrid">
             {plans.map((plan) => (
-              <div className="plan" key={plan.slug}>
+              <div className={activeTenant?.plan === plan.slug ? "plan activePlan" : "plan"} key={plan.slug}>
                 <strong>{plan.name}</strong>
                 <span>{plan.monthlyPriceIdr ? `Rp${plan.monthlyPriceIdr.toLocaleString("id-ID")}/bulan` : "Free"}</span>
                 <p>{plan.monthlyMessageLimit ? `${plan.monthlyMessageLimit.toLocaleString("id-ID")} pesan/bulan` : "Unlimited messages"}</p>
                 <small>{plan.maxNumbers} nomor · {plan.maxAgents} agent · {plan.attachmentEnabled ? "attachment" : "text only"}</small>
+                <button
+                  className={activeTenant?.plan === plan.slug ? "packageButton currentPackage" : "packageButton"}
+                  disabled={activeTenant?.plan === plan.slug || updatingPlan === plan.slug}
+                  onClick={() => updatePackage(plan.slug)}
+                >
+                  {activeTenant?.plan === plan.slug ? "Current" : updatingPlan === plan.slug ? "Updating..." : "Update"}
+                </button>
               </div>
             ))}
           </div>
